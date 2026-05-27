@@ -8,6 +8,7 @@ import { insforge } from '@/lib/insforge'
 import { ListRealtime, type ListChangedRealtimePayload } from './ListRealtime'
 import { PrimaryButton, TextInput } from '@/components/ui/FormControls'
 import { AddProductModal } from '@/components/dashboard/list/AddProductModal'
+import { FloatingActionButton } from '@/components/ui/FloatingActionButton'
 import { CheckedListItemRow, PendingListItemRow } from '@/components/dashboard/list/ListItemRow'
 
 type ShoppingList = {
@@ -856,6 +857,9 @@ export default function ListDetailPage() {
     const previousIndex = items.findIndex((i) => i.id === item.id)
 
     if (newQuantity < 1) {
+      const itemLabel = item.product?.title || 'este producto'
+      if (!window.confirm(`¿Quitar ${itemLabel} de la lista?`)) return
+
       // Optimistic delete when decrementing below one. Explicit delete still asks for confirmation.
       setItems(current => current.filter(i => i.id !== item.id))
     } else {
@@ -1045,21 +1049,25 @@ export default function ListDetailPage() {
                   </h1>
                   <p className="text-xs text-muted-foreground font-medium tracking-tight sm:text-sm">Gestiona productos, cantidades y presupuesto.</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                  <div className="rounded-2xl border border-border bg-muted/20 px-3 py-2 backdrop-blur-sm sm:min-w-[130px]">
+                <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                  <div className="rounded-2xl border border-border bg-muted/20 px-2 py-2 backdrop-blur-sm sm:min-w-[130px] sm:px-3">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Total</p>
-                    <p className="text-base font-black text-foreground">{total.toFixed(2)} <span className="text-[10px] font-bold text-secondary">EUR</span></p>
+                    <p className="text-sm font-black text-foreground sm:text-base">{total.toFixed(2)} <span className="text-[9px] font-bold text-secondary sm:text-[10px]">EUR</span></p>
                   </div>
-                  <div className="rounded-2xl border border-border bg-muted/20 px-3 py-2 backdrop-blur-sm sm:min-w-[130px]">
+                  <div className="rounded-2xl border border-border bg-muted/20 px-2 py-2 backdrop-blur-sm sm:min-w-[130px] sm:px-3">
                     <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Pendiente</p>
-                    <p className="text-base font-black text-foreground">{remainingTotal.toFixed(2)} <span className="text-[10px] font-bold text-secondary">EUR</span></p>
+                    <p className="text-sm font-black text-foreground sm:text-base">{remainingTotal.toFixed(2)} <span className="text-[9px] font-bold text-secondary sm:text-[10px]">EUR</span></p>
+                  </div>
+                  <div className="rounded-2xl border border-secondary/30 bg-secondary/10 px-2 py-2 backdrop-blur-sm sm:hidden">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-secondary/80">En carrito</p>
+                    <p className="text-sm font-black text-foreground">{checkedTotal.toFixed(2)} <span className="text-[9px] font-bold text-secondary">EUR</span></p>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[250px]">
-              <div className="relative group overflow-hidden rounded-2xl border border-secondary/20 bg-secondary/5 p-4 backdrop-blur-md">
+              <div className="relative hidden overflow-hidden rounded-2xl border border-secondary/20 bg-secondary/5 p-4 backdrop-blur-md sm:block">
                 <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 to-transparent opacity-50" />
                 <div className="relative space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-secondary/80">En carrito</p>
@@ -1073,16 +1081,18 @@ export default function ListDetailPage() {
                 </div>
               </div>
               {activeTab === 'products' && (
-                <button
-                  onClick={() => setShowAddProduct(true)}
-                  className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-4 py-3 text-xs font-bold uppercase tracking-widest text-secondary-foreground shadow-lg shadow-secondary/20 transition-all hover:scale-[1.01] active:scale-[0.98]"
-                >
-                  <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="relative w-4 h-4 mr-2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  <span className="relative">Añadir Producto</span>
-                </button>
+                <div className="hidden sm:block">
+                  <button
+                    onClick={() => setShowAddProduct(true)}
+                    className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-4 py-3 text-xs font-bold uppercase tracking-widest text-secondary-foreground shadow-lg shadow-secondary/20 transition-all hover:scale-[1.01] active:scale-[0.98]"
+                  >
+                    <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="relative w-4 h-4 mr-2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    <span className="relative">Añadir Producto</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1381,6 +1391,12 @@ export default function ListDetailPage() {
           {successMessage}
         </div>
       )}
+
+      <FloatingActionButton
+        visible={!showAddProduct}
+        ariaLabel="Añadir producto"
+        onClick={() => setShowAddProduct(true)}
+      />
 
       <AddProductModal
         open={showAddProduct}

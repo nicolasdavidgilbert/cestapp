@@ -7,6 +7,7 @@ import { insforge } from '@/lib/insforge'
 import MobileDashboardNav from '@/app/dashboard/_components/MobileDashboardNav'
 import { CreateListModal } from '@/components/dashboard/CreateListModal'
 import { DashboardListCard } from '@/components/dashboard/DashboardListCard'
+import { FloatingActionButton } from '@/components/ui/FloatingActionButton'
 
 type ShoppingList = {
   id: string
@@ -411,18 +412,12 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Floating Action Button */}
-      {!showCreateModal && (
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="fixed bottom-28 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 text-secondary-foreground shadow-xl shadow-secondary/40 transition-all hover:scale-110 active:scale-90 sm:hidden"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-6 h-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-        </button>
-      )}
+      <FloatingActionButton
+        visible={!showCreateModal}
+        ariaLabel="Crear lista nueva"
+        onClick={() => setShowCreateModal(true)}
+        className="bottom-28 !z-[60]"
+      />
 
       <CreateListModal
         open={showCreateModal}
