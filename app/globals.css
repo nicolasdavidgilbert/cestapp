@@ -19,8 +19,8 @@
   --accent-foreground: #3d6105;
   --destructive: #e5484d;
   --destructive-foreground: #ffffff;
-  --border: #e2e4db;
-  --input: #e2e4db;
+  --border: #ccd2c2;
+  --input: #cfd5c6;
   --ring: #2d7a44;
   --chart-1: #2d7a44;
   --chart-2: #f3b03d;
@@ -33,7 +33,7 @@
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e9eedf;
   --sidebar-accent-foreground: #2d7a44;
-  --sidebar-border: #e2e4db;
+  --sidebar-border: #ccd2c2;
   --sidebar-ring: #2d7a44;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-serif: Georgia, serif;
@@ -74,8 +74,8 @@
   --accent-foreground: #bef264;
   --destructive: #f87171;
   --destructive-foreground: #ffffff;
-  --border: #2e3229;
-  --input: #2e3229;
+  --border: #4a5143;
+  --input: #4a5143;
   --ring: #4ade80;
   --chart-1: #61bc47;
   --chart-2: #fdf200;
@@ -88,7 +88,7 @@
   --sidebar-primary-foreground: #052e16;
   --sidebar-accent: #24291e;
   --sidebar-accent-foreground: #bef264;
-  --sidebar-border: #2e3229;
+  --sidebar-border: #4a5143;
   --sidebar-ring: #4ade80;
   --font-sans: Inter, system-ui, sans-serif;
   --font-serif: Georgia, serif;

@@ -6,6 +6,9 @@ import Link from 'next/link'
 import { useUser } from '@/contexts/UserContext'
 import { insforge } from '@/lib/insforge'
 import MobileDashboardNav from '@/app/dashboard/_components/MobileDashboardNav'
+import { ProductCreateModal } from '@/components/products/ProductCreateModal'
+import { ProductEditorModal } from '@/components/products/ProductEditorModal'
+import { ProductCard } from '@/components/products/ProductCard'
 
 type Product = {
   id: string
@@ -93,8 +96,6 @@ function reconcileProducts(previous: Product[], incoming: Product[]) {
   return unchanged ? previous : reconciled
 }
 
-const inputClassName =
-  'w-full rounded-2xl border border-border bg-muted/40 px-6 py-4 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-secondary/40 focus:bg-muted/60 focus:ring-4 focus:ring-secondary/5'
 
 export default function ProductsPage() {
   const router = useRouter()
@@ -314,8 +315,9 @@ export default function ProductsPage() {
     }
 
     if (data) {
-      setSelectedProduct(data)
-      setProducts(products.map((product) => (product.id === data.id ? data : product)))
+      const updatedProduct = data as Product
+      setSelectedProduct(updatedProduct)
+      setProducts((current) => current.map((product) => (product.id === updatedProduct.id ? updatedProduct : product)))
     }
 
     setSavingProduct(false)
@@ -560,40 +562,7 @@ export default function ProductsPage() {
           ) : (
             <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredProducts.map((product) => (
-                <button
-                  type="button"
-                  key={product.id}
-                  onClick={() => void openProductEditor(product)}
-                  className="group relative flex flex-col items-start rounded-[2rem] border border-border bg-muted/20 p-6 text-left backdrop-blur-sm transition-all hover:bg-muted/40 hover:border-secondary/30 hover:-translate-y-1"
-                >
-                  <div className="w-full flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-bold text-foreground leading-tight tracking-tight group-hover:text-secondary transition-colors">{product.title}</h3>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                        Actualizado: {new Date(product.updated_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="h-10 w-10 flex items-center justify-center rounded-2xl bg-muted/40 text-secondary ring-1 ring-border/20 transition-all group-hover:bg-secondary group-hover:text-secondary-foreground">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {product.description && (
-                    <p className="mt-4 line-clamp-2 text-xs font-medium text-muted-foreground leading-relaxed">
-                      {product.description}
-                    </p>
-                  )}
-
-                  <div className="mt-8 pt-6 border-t border-border w-full flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Último Precio</span>
-                    <span className="text-xl font-black text-foreground">
-                      {product.current_price !== null ? `${product.current_price.toFixed(2)}` : '-'}
-                      <span className="text-[10px] ml-1 text-secondary">EUR</span>
-                    </span>
-                  </div>
-                </button>
+                <ProductCard key={product.id} product={product} onOpen={(nextProduct) => void openProductEditor(nextProduct)} />
               ))}
             </div>
           )}
@@ -611,220 +580,35 @@ export default function ProductsPage() {
           </button>
         )}
 
-        {showCreateModal && (
-          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-background/80 backdrop-blur-sm p-4 sm:items-center sm:p-6">
-            <div className="w-full max-w-xl animate-in slide-in-from-bottom duration-300 rounded-[2.5rem] border border-border bg-muted p-8 shadow-2xl">
-              <div className="mb-8 flex items-center justify-between">
-                <div className="space-y-1">
-                  <h2 className="text-2xl font-bold text-foreground tracking-tight">Nuevo Producto</h2>
-                  <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Añade tu producto al catálogo</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => !creating && setShowCreateModal(false)}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/40 text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+        <ProductCreateModal
+          open={showCreateModal}
+          creating={creating}
+          newProduct={newProduct}
+          setNewProduct={setNewProduct}
+          onClose={() => setShowCreateModal(false)}
+          onSubmit={createProduct}
+        />
 
-              <form onSubmit={createProduct} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="ml-1 text-xs font-bold uppercase tracking-widest text-secondary">Nombre del producto</label>
-                  <input
-                    type="text"
-                    value={newProduct.title}
-                    onChange={(e) => setNewProduct({ ...newProduct, title: e.target.value })}
-                    placeholder="Ej: Leche semidesnatada"
-                    className={inputClassName}
-                    autoFocus
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-xs font-bold uppercase tracking-widest text-secondary">Descripción</label>
-                  <input
-                    type="text"
-                    value={newProduct.description}
-                    onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                    placeholder="Marca, tamaño o notas..."
-                    className={inputClassName}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="ml-1 text-xs font-bold uppercase tracking-widest text-secondary">Precio inicial (EUR)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                    placeholder="0.00"
-                    className={inputClassName}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={creating || !newProduct.title.trim()}
-                  className="group relative mt-2 flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-6 py-4 text-base font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale disabled:hover:scale-100"
-                >
-                  <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
-                  {creating ? 'Creando producto...' : 'Crear producto'}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {showEditor && selectedProduct && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/90 backdrop-blur-md p-0 sm:p-6 lg:p-12">
-            <div className="w-full max-w-5xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col rounded-none sm:rounded-[2.5rem] border border-border bg-muted shadow-2xl overflow-hidden">
-              <div className="p-6 sm:p-8 border-b border-border flex items-center justify-between bg-foreground/[0.02]">
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-bold text-foreground tracking-tight">Detalle del Producto</h3>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-secondary">ID: {selectedProduct.id.slice(0, 8)}</p>
-                </div>
-                <button
-                  onClick={closeEditor}
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-8 sm:space-y-10">
-                <section className="space-y-6">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Atributos Básicos</span>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground ml-1">Nombre</label>
-                      <input
-                        type="text"
-                        value={editorForm.title}
-                        onChange={(e) => setEditorForm({ ...editorForm, title: e.target.value })}
-                        placeholder="Nombre"
-                        className={inputClassName}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground ml-1">Descripción</label>
-                      <input
-                        type="text"
-                        value={editorForm.description}
-                        onChange={(e) => setEditorForm({ ...editorForm, description: e.target.value })}
-                        placeholder="Notas adicionales..."
-                        className={inputClassName}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => void saveProductChanges()}
-                    disabled={savingProduct || !editorForm.title.trim()}
-                    className="flex items-center justify-center rounded-2xl bg-foreground px-8 py-3 text-sm font-bold text-background transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
-                  >
-                    {savingProduct ? 'Guardando...' : 'Actualizar Información'}
-                  </button>
-                </section>
-
-                <section className="space-y-6 pt-10 border-t border-border">
-                  <div className="flex items-end justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Historial de Precios</span>
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Valor de Mercado Actual</p>
-                      <p className="text-3xl font-black text-primary">
-                        {selectedProduct.current_price !== null ? `${selectedProduct.current_price.toFixed(2)}` : '-'}
-                        <span className="text-xs ml-1">EUR</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-4 sm:flex-row bg-muted/20 p-5 sm:p-6 rounded-3xl ring-1 ring-border/20">
-                    <div className="flex-1 space-y-2">
-                      <label className="text-xs font-bold text-muted-foreground ml-1">Nuevo Punto de Precio</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={newHistoryPrice}
-                        onChange={(e) => setNewHistoryPrice(e.target.value)}
-                        placeholder="0.00"
-                        className={inputClassName}
-                      />
-                    </div>
-                    <button
-                      onClick={() => void addNewHistoryPrice()}
-                      disabled={!newHistoryPrice || addingHistory}
-                      className="group relative flex items-center justify-center overflow-hidden rounded-2xl bg-secondary px-8 py-4 text-sm font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 self-end"
-                    >
-                      {addingHistory ? 'Registrando...' : 'Registrar Precio'}
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {priceHistory.length === 0 ? (
-                      <p className="py-12 text-center text-xs text-muted-foreground font-medium italic bg-muted/20 rounded-[2rem]">Sin registros históricos aún.</p>
-                    ) : (
-                      <div className="grid gap-3">
-                        {priceHistory.map((entry) => (
-                          <div
-                            key={entry.id}
-                            className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between rounded-2xl bg-muted/40 p-4 ring-1 ring-border/20 hover:bg-muted/60 transition-all"
-                          >
-                            <div className="space-y-1 min-w-[140px]">
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase">Fecha de Registro</p>
-                              <p className="text-xs font-bold text-foreground">
-                                {new Date(entry.created_at).toLocaleDateString()} · {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-
-                            <div className="flex flex-1 items-center gap-3">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={editingHistory[entry.id] ?? ''}
-                                onChange={(e) => setEditingHistory({ ...editingHistory, [entry.id]: e.target.value })}
-                                className="h-10 grow rounded-xl border border-border bg-muted/20 px-4 text-sm text-foreground outline-none focus:border-secondary/40"
-                              />
-                              <div className="flex gap-1.5">
-                                <button
-                                  onClick={() => void saveHistoryEntry(entry.id)}
-                                  disabled={savingHistoryId === entry.id}
-                                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/40 text-primary hover:bg-primary/20 transition-all"
-                                  title="Guardar cambios"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={() => void deleteHistoryEntry(entry.id)}
-                                  disabled={deletingHistoryId === entry.id}
-                                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/40 text-destructive hover:bg-destructive/20 transition-all"
-                                  title="Eliminar entrada"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </section>
-              </div>
-            </div>
-          </div>
-        )}
+        <ProductEditorModal
+          open={showEditor}
+          product={selectedProduct}
+          editorForm={editorForm}
+          setEditorForm={setEditorForm}
+          savingProduct={savingProduct}
+          priceHistory={priceHistory}
+          editingHistory={editingHistory}
+          setEditingHistory={setEditingHistory}
+          newHistoryPrice={newHistoryPrice}
+          setNewHistoryPrice={setNewHistoryPrice}
+          addingHistory={addingHistory}
+          savingHistoryId={savingHistoryId}
+          deletingHistoryId={deletingHistoryId}
+          onClose={closeEditor}
+          onSaveProduct={() => void saveProductChanges()}
+          onAddHistoryPrice={() => void addNewHistoryPrice()}
+          onSaveHistoryEntry={(entryId) => void saveHistoryEntry(entryId)}
+          onDeleteHistoryEntry={(entryId) => void deleteHistoryEntry(entryId)}
+        />
 
         <MobileDashboardNav />
       </main>

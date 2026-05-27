@@ -6,6 +6,9 @@ import Link from 'next/link'
 import { useUser } from '@/contexts/UserContext'
 import { insforge } from '@/lib/insforge'
 import { ListRealtime, type ListChangedRealtimePayload } from './ListRealtime'
+import { PrimaryButton, TextInput } from '@/components/ui/FormControls'
+import { AddProductModal } from '@/components/dashboard/list/AddProductModal'
+import { CheckedListItemRow, PendingListItemRow } from '@/components/dashboard/list/ListItemRow'
 
 type ShoppingList = {
   id: string
@@ -59,9 +62,33 @@ type ShareByEmailResult = {
 }
 
 type DashboardTab = 'products' | 'settings' | 'stats'
+type InviteExpiryOption = 'never' | '1d' | '7d' | '30d'
 
-const inputClassName =
-  'w-full rounded-2xl border border-border bg-muted/40 px-6 py-4 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-secondary/40 focus:bg-muted/60 focus:ring-4 focus:ring-secondary/5'
+const inviteExpiryOptions: { value: InviteExpiryOption; label: string; days: number | null }[] = [
+  { value: 'never', label: 'Sin caducidad', days: null },
+  { value: '1d', label: '24 h', days: 1 },
+  { value: '7d', label: '7 días', days: 7 },
+  { value: '30d', label: '30 días', days: 30 },
+]
+
+function getInviteExpiryDate(option: InviteExpiryOption) {
+  const selected = inviteExpiryOptions.find((item) => item.value === option)
+  if (!selected?.days) return null
+
+  const expiresAt = new Date()
+  expiresAt.setDate(expiresAt.getDate() + selected.days)
+  return expiresAt.toISOString()
+}
+
+function formatInviteStatus(invite: InviteLink) {
+  if (!invite.expires_at) return 'Activo · Sin caducidad'
+
+  const expiresAt = new Date(invite.expires_at)
+  if (expiresAt.getTime() <= Date.now()) return 'Expirado'
+
+  return `Activo · Caduca ${expiresAt.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}`
+}
+
 
 export default function ListDetailPage() {
   const router = useRouter()
@@ -82,6 +109,10 @@ export default function ListDetailPage() {
   const [savingListName, setSavingListName] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [sharingEmail, setSharingEmail] = useState(false)
+  const [productSearch, setProductSearch] = useState('')
+  const [quickProductPrice, setQuickProductPrice] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [inviteExpiry, setInviteExpiry] = useState<InviteExpiryOption>('7d')
   const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([])
   const [loadingInviteLinks, setLoadingInviteLinks] = useState(false)
   const [generatingInviteLink, setGeneratingInviteLink] = useState(false)
@@ -92,6 +123,13 @@ export default function ListDetailPage() {
 
   const listChannel = `list:${listId}`
   const canManageMembers = list?.owner_id === user?.id
+
+  const showSuccess = useCallback((message: string) => {
+    setSuccessMessage(message)
+    window.setTimeout(() => {
+      setSuccessMessage((current) => (current === message ? '' : current))
+    }, 1800)
+  }, [])
 
   const loadMembers = useCallback(async () => {
     const { data, error } = await insforge.database.rpc('list_share_members', {
@@ -394,6 +432,7 @@ export default function ListDetailPage() {
     }
 
     setShareEmail('')
+    showSuccess('Acceso compartido')
     await loadMembers()
     await publishListEvent('members_changed', {
       action: 'added_by_email',
@@ -416,6 +455,7 @@ export default function ListDetailPage() {
         {
           list_id: listId,
           created_by: user.id,
+          expires_at: getInviteExpiryDate(inviteExpiry),
         },
       ])
       .select('*')
@@ -431,6 +471,7 @@ export default function ListDetailPage() {
       await loadInviteLinks()
       await publishListEvent('invite_links_changed', { action: 'created', invite_id: data.id })
       await publishUserListsEvent(user.id, 'updated')
+      showSuccess('Enlace creado')
     }
     setGeneratingInviteLink(false)
   }
@@ -453,6 +494,7 @@ export default function ListDetailPage() {
 
     await loadInviteLinks()
     await publishListEvent('invite_links_changed', { action: 'revoked', invite_id: invite.id })
+    showSuccess('Enlace revocado')
     setRevokingInviteId(null)
   }
 
@@ -461,6 +503,7 @@ export default function ListDetailPage() {
     try {
       await navigator.clipboard.writeText(inviteUrl)
       setCopiedLinkToken(token)
+      showSuccess('Enlace copiado')
       window.setTimeout(() => {
         setCopiedLinkToken((current) => (current === token ? null : current))
       }, 1600)
@@ -507,6 +550,8 @@ export default function ListDetailPage() {
 
   async function removeMember(member: ShoppingListShare) {
     if (!canManageMembers) return
+    const memberLabel = member.shared_email || member.user_id
+    if (!window.confirm(`Quitar acceso a ${memberLabel}?`)) return
 
     setRemovingMemberId(member.id)
     setError('')
@@ -522,6 +567,7 @@ export default function ListDetailPage() {
     await publishListEvent('members_changed', { action: 'removed', target_user_id: member.user_id })
     await publishUserListsEvent(member.user_id, 'unshared')
     await publishUserListsEvent(user!.id, 'shared')
+    showSuccess('Acceso retirado')
     setRemovingMemberId(null)
   }
 
@@ -561,6 +607,8 @@ export default function ListDetailPage() {
     }
 
     setShowAddProduct(false)
+    setProductSearch('')
+    showSuccess(existingItem ? 'Cantidad actualizada' : 'Producto añadido')
 
     const response = existingItem
       ? await insforge.database
@@ -638,13 +686,12 @@ export default function ListDetailPage() {
     }
   }
 
-  async function createAndAddProduct(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newProduct.title.trim()) return
+  async function createProductWithValues(titleInput: string, descriptionInput: string, priceInput: string) {
+    const title = titleInput.trim()
+    if (!title) return
 
-    const title = newProduct.title.trim()
-    const description = newProduct.description.trim() || null
-    const parsedPrice = newProduct.price.trim() ? Number(newProduct.price.replace(',', '.')) : null
+    const description = descriptionInput.trim() || null
+    const parsedPrice = priceInput.trim() ? Number(priceInput.replace(',', '.')) : null
     const price = parsedPrice !== null && Number.isFinite(parsedPrice) ? parsedPrice : null
     const optimisticProductId = `optimistic-product-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     const optimisticItemId = `optimistic-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -667,7 +714,10 @@ export default function ListDetailPage() {
     setItems((current) => [optimisticItem, ...current])
     setProducts((current) => [optimisticProduct, ...current])
     setNewProduct({ title: '', description: '', price: '' })
+    setQuickProductPrice('')
+    setProductSearch('')
     setShowAddProduct(false)
+    showSuccess('Producto añadido')
 
     const { data, error } = await insforge.database.rpc('create_product_for_list', {
       target_list_id: listId,
@@ -748,6 +798,16 @@ export default function ListDetailPage() {
     setCreatingProduct(false)
   }
 
+  async function createAndAddProduct(e: React.FormEvent) {
+    e.preventDefault()
+    await createProductWithValues(newProduct.title, newProduct.description, newProduct.price)
+  }
+
+  async function createMissingProduct(e: React.FormEvent) {
+    e.preventDefault()
+    await createProductWithValues(productSearch, '', quickProductPrice)
+  }
+
   async function toggleChecked(item: ListItem) {
     const nextValue = !item.checked
     const previousChecked = item.checked
@@ -796,7 +856,7 @@ export default function ListDetailPage() {
     const previousIndex = items.findIndex((i) => i.id === item.id)
 
     if (newQuantity < 1) {
-      // Optimistic delete
+      // Optimistic delete when decrementing below one. Explicit delete still asks for confirmation.
       setItems(current => current.filter(i => i.id !== item.id))
     } else {
       // Optimistic update
@@ -866,6 +926,8 @@ export default function ListDetailPage() {
   async function removeItem(itemId: string) {
     const previousItem = items.find((item) => item.id === itemId)
     const previousIndex = items.findIndex((item) => item.id === itemId)
+    const itemLabel = previousItem?.product?.title || 'este producto'
+    if (!window.confirm(`Quitar ${itemLabel} de la lista?`)) return
 
     // Optimistic delete
     setItems(current => current.filter(i => i.id !== itemId))
@@ -936,6 +998,11 @@ export default function ListDetailPage() {
   const total = items.reduce((sum, item) => sum + (item.product?.current_price || 0) * item.quantity, 0)
   const remainingTotal = Math.max(total - checkedTotal, 0)
   const progress = total > 0 ? (checkedTotal / total) * 100 : 0
+  const normalizedProductSearch = productSearch.trim().toLowerCase()
+  const filteredProducts = normalizedProductSearch
+    ? products.filter((product) => product.title.toLowerCase().includes(normalizedProductSearch))
+    : products
+  const suggestedProducts = products.filter((product) => !items.some((item) => item.product_id === product.id)).slice(0, 3)
 
   if (authLoading || !user) {
     return (
@@ -980,11 +1047,11 @@ export default function ListDetailPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   <div className="rounded-2xl border border-border bg-muted/20 px-3 py-2 backdrop-blur-sm sm:min-w-[130px]">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Total compra</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Total</p>
                     <p className="text-base font-black text-foreground">{total.toFixed(2)} <span className="text-[10px] font-bold text-secondary">EUR</span></p>
                   </div>
                   <div className="rounded-2xl border border-border bg-muted/20 px-3 py-2 backdrop-blur-sm sm:min-w-[130px]">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Queda</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Pendiente</p>
                     <p className="text-base font-black text-foreground">{remainingTotal.toFixed(2)} <span className="text-[10px] font-bold text-secondary">EUR</span></p>
                   </div>
                 </div>
@@ -995,7 +1062,7 @@ export default function ListDetailPage() {
               <div className="relative group overflow-hidden rounded-2xl border border-secondary/20 bg-secondary/5 p-4 backdrop-blur-md">
                 <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 to-transparent opacity-50" />
                 <div className="relative space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-secondary/80">Total Marcado</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-secondary/80">En carrito</p>
                   <p className="text-2xl font-black text-foreground">{checkedTotal.toFixed(2)} <span className="text-xs font-bold text-secondary">EUR</span></p>
                   <div className="mt-2 w-full h-1 bg-muted/20 rounded-full overflow-hidden">
                     <div 
@@ -1068,13 +1135,28 @@ export default function ListDetailPage() {
                   <h2 className="text-xl font-bold text-foreground tracking-tight">Tu lista está vacía</h2>
                   <p className="text-muted-foreground text-sm max-w-xs mx-auto">Añade productos de tu catálogo o crea nuevos para empezar a comprar.</p>
                 </div>
-                <button
-                  onClick={() => setShowAddProduct(true)}
-                  className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-8 py-4 text-base font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95"
-                >
-                  <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
-                  Añadir mi primer producto
-                </button>
+                <div className="flex flex-col items-center gap-3">
+                  <button
+                    onClick={() => setShowAddProduct(true)}
+                    className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-8 py-4 text-base font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95"
+                  >
+                    <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
+                    Añadir mi primer producto
+                  </button>
+                  {suggestedProducts.length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {suggestedProducts.map((product) => (
+                        <button
+                          key={product.id}
+                          onClick={() => void addExistingProduct(product.id)}
+                          className="rounded-full border border-border bg-muted/20 px-3 py-1.5 text-[10px] font-bold text-muted-foreground transition-all hover:bg-muted/40 hover:text-foreground"
+                        >
+                          {product.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <section className="space-y-6">
@@ -1083,61 +1165,14 @@ export default function ListDetailPage() {
                     <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary ml-1">Por comprar</p>
                     <div className="space-y-3">
                       {uncheckedItems.map((item) => (
-                        <div 
-                          key={item.id} 
-                          className="group relative flex items-center justify-between rounded-2xl border border-border bg-muted/20 p-4 backdrop-blur-sm transition-all hover:bg-muted/40"
-                        >
-                          <div className="flex items-center gap-4 flex-1">
-                            <button
-                              onClick={() => toggleChecked(item)}
-                              disabled={updatingItems.has(item.id)}
-                              className={`group/check relative flex h-7 w-7 items-center justify-center rounded-xl border-2 border-border bg-muted/20 text-transparent transition-all hover:border-secondary/50 active:scale-90 ${updatingItems.has(item.id) ? 'opacity-50 cursor-wait' : ''}`}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={4} stroke="currentColor" className="w-4 h-4 group-hover/check:text-secondary/20">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            </button>
-                            <div className="space-y-0.5">
-                              <h4 className="text-sm font-bold text-foreground tracking-tight">{item.product?.title || 'Producto desconocido'}</h4>
-                              <p className="text-xs font-semibold text-secondary/60">
-                                {item.product?.current_price ? `${(item.product.current_price * item.quantity).toFixed(2)} EUR` : 'Sin precio'}
-                              </p>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-6">
-                            <div className={`flex items-center gap-1.5 rounded-xl border border-border bg-muted/20 p-1 ring-1 ring-border/20 ${updatingItems.has(item.id) ? 'opacity-50 pointer-events-none' : ''}`}>
-                              <button
-                                onClick={() => updateQuantity(item, -1)}
-                                disabled={updatingItems.has(item.id)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-all"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
-                                </svg>
-                              </button>
-                              <span className="w-6 text-center text-xs font-bold text-foreground">{item.quantity}</span>
-                              <button
-                                onClick={() => updateQuantity(item, 1)}
-                                disabled={updatingItems.has(item.id)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/20 hover:text-primary transition-all"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                </svg>
-                              </button>
-                            </div>
-                            <button
-                              onClick={() => removeItem(item.id)}
-                              disabled={updatingItems.has(item.id)}
-                              className="hidden group-hover:flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all disabled:opacity-30"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
+                        <PendingListItemRow
+                          key={item.id}
+                          item={item}
+                          updating={updatingItems.has(item.id)}
+                          onToggleChecked={(nextItem) => void toggleChecked(nextItem)}
+                          onUpdateQuantity={(nextItem, delta) => void updateQuantity(nextItem, delta)}
+                          onRemove={(itemId) => void removeItem(itemId)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -1146,31 +1181,14 @@ export default function ListDetailPage() {
                 {checkedItems.length > 0 && (
                   <div className="space-y-3">
                     <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary/70 ml-1">En el carrito</p>
-                    <div className="space-y-3 opacity-60">
+                    <div className="space-y-3">
                       {checkedItems.map((item) => (
-                        <div 
-                          key={item.id} 
-                          className="group relative flex items-center justify-between rounded-2xl border border-border bg-muted/40 p-4 transition-all hover:bg-muted/60"
-                        >
-                          <div className="flex items-center gap-4 flex-1">
-                            <button
-                              onClick={() => toggleChecked(item)}
-                              disabled={updatingItems.has(item.id)}
-                              className={`flex h-7 w-7 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-all active:scale-90 ${updatingItems.has(item.id) ? 'opacity-50 cursor-wait' : ''}`}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={4} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            </button>
-                            <div className="space-y-0.5">
-                              <h4 className="text-sm font-bold text-muted-foreground tracking-tight line-through decoration-primary/50">{item.product?.title}</h4>
-                              <p className="text-xs font-semibold text-muted-foreground/60">
-                                {item.product?.current_price ? `${(item.product.current_price * item.quantity).toFixed(2)} EUR` : '-'}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="text-xs font-black text-muted-foreground bg-muted/40 px-2.5 py-1 rounded-full">{item.quantity} ud.</span>
-                        </div>
+                        <CheckedListItemRow
+                          key={item.id}
+                          item={item}
+                          updating={updatingItems.has(item.id)}
+                          onToggleChecked={(nextItem) => void toggleChecked(nextItem)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -1188,22 +1206,23 @@ export default function ListDetailPage() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-muted-foreground ml-1">Nombre de la lista</label>
                     <div className="flex flex-col gap-3 sm:flex-row">
-                      <input
+                      <TextInput
                         type="text"
                         value={listNameDraft}
                         onChange={(e) => setListNameDraft(e.target.value)}
                         disabled={!canManageMembers}
-                        className={inputClassName}
                         placeholder="Nombre de la lista"
                       />
                       {canManageMembers && (
-                        <button
+                        <PrimaryButton
+                          type="button"
                           onClick={() => void updateListName()}
                           disabled={savingListName || !listNameDraft.trim()}
-                          className="group relative flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-foreground px-8 py-3 text-sm font-bold text-background transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                          tone="foreground"
+                          className="shrink-0 px-8 py-3 text-sm"
                         >
                           {savingListName ? 'Guardando...' : 'Actualizar'}
-                        </button>
+                        </PrimaryButton>
                       )}
                     </div>
                   </div>
@@ -1218,20 +1237,20 @@ export default function ListDetailPage() {
                   ) : (
                     <div className="space-y-4">
                       <div className="flex flex-col gap-3 sm:flex-row">
-                        <input
+                        <TextInput
                           type="email"
                           value={shareEmail}
                           onChange={(e) => setShareEmail(e.target.value)}
                           placeholder="email@ejemplo.com"
-                          className={inputClassName}
                         />
-                        <button
+                        <PrimaryButton
+                          type="button"
                           onClick={() => void addMemberByEmail()}
                           disabled={sharingEmail || !shareEmail.trim()}
-                          className="group relative flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-8 py-3 text-sm font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                          className="shrink-0 px-8 py-3 text-sm"
                         >
                           {sharingEmail ? 'Compartiendo...' : 'Compartir'}
-                        </button>
+                        </PrimaryButton>
                       </div>
                       
                       {members.length > 0 && (
@@ -1240,7 +1259,10 @@ export default function ListDetailPage() {
                           <div className="grid gap-2">
                             {members.map((member) => (
                               <div key={member.id} className="flex items-center justify-between rounded-xl bg-muted/20 p-3 ring-1 ring-border/20">
-                                <span className="text-sm font-medium text-muted-foreground truncate mr-2">{member.shared_email || member.user_id}</span>
+                                <div className="min-w-0 mr-2">
+                                  <span className="block truncate text-sm font-medium text-muted-foreground">{member.shared_email || member.user_id}</span>
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-secondary/70">Editor</span>
+                                </div>
                                 <button
                                   onClick={() => removeMember(member)}
                                   disabled={removingMemberId === member.id}
@@ -1261,15 +1283,28 @@ export default function ListDetailPage() {
                   <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Enlaces de Invitación</span>
                   {canManageMembers && (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-xs text-muted-foreground max-w-[240px]">Envía un enlace rápido por WhatsApp o Telegram.</p>
-                        <button
-                          onClick={() => void createInviteLink()}
-                          disabled={generatingInviteLink}
-                          className="flex items-center justify-center rounded-xl bg-muted/20 px-4 py-2 text-xs font-bold text-foreground ring-1 ring-border/40 transition-all hover:bg-muted/40"
-                        >
-                          {generatingInviteLink ? 'Generando...' : 'Nuevo Enlace'}
-                        </button>
+                        <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+                          <select
+                            value={inviteExpiry}
+                            onChange={(e) => setInviteExpiry(e.target.value as InviteExpiryOption)}
+                            className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-foreground outline-none transition-all hover:bg-muted/40 dark:bg-muted dark:text-foreground sm:flex-none"
+                          >
+                            {inviteExpiryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => void createInviteLink()}
+                            disabled={generatingInviteLink}
+                            className="flex flex-1 items-center justify-center rounded-xl bg-muted/20 px-4 py-2 text-xs font-bold text-foreground ring-1 ring-border/40 transition-all hover:bg-muted/40 disabled:opacity-50 sm:flex-none"
+                          >
+                            {generatingInviteLink ? 'Generando...' : 'Nuevo Enlace'}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid gap-3">
@@ -1280,7 +1315,12 @@ export default function ListDetailPage() {
                         ) : (
                           inviteLinks.map((invite) => (
                             <div key={invite.id} className="flex flex-col gap-3 rounded-2xl bg-muted/40 p-4 ring-1 ring-border/20">
-                              <p className="truncate text-[10px] font-mono text-muted-foreground uppercase tracking-tighter">{buildInviteUrl(invite.token)}</p>
+                              <div className="space-y-1">
+                                <p className="truncate text-xs font-medium text-muted-foreground tracking-tight">{buildInviteUrl(invite.token)}</p>
+                                <p className={`text-[10px] font-bold uppercase tracking-widest ${invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now() ? 'text-destructive' : 'text-secondary'}`}>
+                                  {formatInviteStatus(invite)}
+                                </p>
+                              </div>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => void copyInviteLink(invite.token)}
@@ -1336,95 +1376,29 @@ export default function ListDetailPage() {
         )}
       </div>
 
-      {/* Modern Add Product Modal */}
-      {showAddProduct && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-md p-0 sm:p-6">
-          <div className="w-full max-w-2xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col rounded-none sm:rounded-[2.5rem] border border-border bg-muted shadow-2xl overflow-hidden">
-            <div className="p-8 border-b border-border flex items-center justify-between bg-foreground/[0.02]">
-              <div className="space-y-1">
-                <h3 className="text-2xl font-bold text-foreground tracking-tight">Gestionar Productos</h3>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Añade o crea nuevos ítems</p>
-              </div>
-              <button
-                onClick={() => setShowAddProduct(false)}
-                className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-8 space-y-10">
-              <div className="space-y-6">
-                <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Tu Catálogo</span>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {products.length === 0 ? (
-                    <p className="col-span-full py-10 text-center text-xs text-muted-foreground italic">No tienes productos guardados en tu catálogo.</p>
-                  ) : (
-                    products.map((p) => {
-                      const isAdded = items.some((i) => i.product_id === p.id)
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => void addExistingProduct(p.id)}
-                          className="flex items-center justify-between rounded-[1.25rem] border border-border bg-muted/40 p-4 text-left transition-all hover:bg-muted/60 hover:border-secondary/20"
-                        >
-                          <div className="space-y-0.5">
-                            <p className="text-sm font-bold text-foreground leading-tight">{p.title}</p>
-                            <p className="text-[10px] font-bold text-secondary">{p.current_price ? `${p.current_price.toFixed(2)} EUR` : 'S/P'}</p>
-                          </div>
-                          <div className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${isAdded ? 'bg-primary text-primary-foreground' : 'bg-muted/20 text-muted-foreground'}`}>
-                            {isAdded ? (
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            ) : (
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                              </svg>
-                            )}
-                          </div>
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-6 pt-4 border-t border-border">
-                <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Nuevo Producto Rápido</span>
-                <form onSubmit={createAndAddProduct} className="grid gap-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <input
-                      type="text"
-                      value={newProduct.title}
-                      onChange={(e) => setNewProduct({ ...newProduct, title: e.target.value })}
-                      placeholder="Nombre del producto *"
-                      className={inputClassName}
-                      required
-                    />
-                    <input
-                      type="text"
-                      value={newProduct.price}
-                      onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                      placeholder="Precio estimado (EUR)"
-                      className={inputClassName}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={creatingProduct || !newProduct.title.trim()}
-                    className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-foreground animate-pulse-once px-6 py-4 text-base font-bold text-background transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
-                  >
-                    {creatingProduct ? 'Creando...' : 'Crear y Añadir'}
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
+      {successMessage && (
+        <div className="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-2xl border border-border bg-foreground px-4 py-3 text-xs font-bold text-background shadow-xl">
+          {successMessage}
         </div>
       )}
+
+      <AddProductModal
+        open={showAddProduct}
+        products={products}
+        filteredProducts={filteredProducts}
+        items={items}
+        productSearch={productSearch}
+        setProductSearch={setProductSearch}
+        quickProductPrice={quickProductPrice}
+        setQuickProductPrice={setQuickProductPrice}
+        newProduct={newProduct}
+        setNewProduct={setNewProduct}
+        creatingProduct={creatingProduct}
+        onClose={() => setShowAddProduct(false)}
+        onAddExistingProduct={(productId) => void addExistingProduct(productId)}
+        onCreateMissingProduct={createMissingProduct}
+        onCreateAndAddProduct={createAndAddProduct}
+      />
     </main>
   )
 }

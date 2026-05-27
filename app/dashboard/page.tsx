@@ -1,11 +1,12 @@
 'use client'
 
-import { memo, useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useUser } from '@/contexts/UserContext'
 import { insforge } from '@/lib/insforge'
 import MobileDashboardNav from '@/app/dashboard/_components/MobileDashboardNav'
+import { CreateListModal } from '@/components/dashboard/CreateListModal'
+import { DashboardListCard } from '@/components/dashboard/DashboardListCard'
 
 type ShoppingList = {
   id: string
@@ -89,44 +90,6 @@ function reconcileLists(previous: DashboardList[], incoming: DashboardList[]) {
 
   return unchanged ? previous : reconciled
 }
-
-const DashboardListCard = memo(function DashboardListCard({ list }: { list: DashboardList }) {
-  return (
-    <Link
-      href={`/dashboard/${list.id}`}
-      className="group relative overflow-hidden rounded-[2rem] border border-border bg-muted/20 p-6 backdrop-blur-sm transition-all hover:bg-muted/40 hover:-translate-y-1 active:scale-[0.98]"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-secondary/70">Lista de compra</p>
-          <h3 className="text-xl font-bold text-foreground group-hover:text-secondary transition-colors">{list.name}</h3>
-        </div>
-        {list.access === 'owner' ? (
-          <span className="rounded-full bg-secondary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-secondary ring-1 ring-secondary/20">
-            Propia
-          </span>
-        ) : (
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary ring-1 ring-primary/20">
-            Compartida
-          </span>
-        )}
-      </div>
-      
-      <div className="mt-6 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground group-hover:text-muted-foreground/80 transition-colors">
-          {list.access === 'owner'
-            ? 'Gestiona y compra en tiempo real'
-            : `Editor (${list.role || 'colaborador'})`}
-        </p>
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted/40 text-foreground/30 group-hover:bg-secondary/20 group-hover:text-secondary transition-all">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
-        </div>
-      </div>
-    </Link>
-  )
-})
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -461,53 +424,14 @@ export default function DashboardPage() {
         </button>
       )}
 
-      {/* Modern Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-background/80 backdrop-blur-sm p-4 sm:items-center sm:p-6">
-          <div 
-            className="w-full max-w-md animate-in slide-in-from-bottom duration-300 rounded-[2.5rem] border border-border bg-muted p-8 shadow-2xl [background:linear-gradient(135deg,var(--background),var(--muted))]"
-          >
-            <div className="mb-8 flex items-center justify-between">
-              <div className="space-y-1">
-                <h2 className="text-2xl font-bold text-foreground tracking-tight">Nueva Lista</h2>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-widest">Comienza tu compra</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => !creating && setShowCreateModal(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={createList} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-widest text-secondary ml-1">Nombre de la lista</label>
-                <input
-                  type="text"
-                  value={newListName}
-                  onChange={(e) => setNewListName(e.target.value)}
-                  placeholder="Ej: Súper semanal, Cena familia..."
-                  className="w-full rounded-2xl border border-border bg-muted/40 px-6 py-4 text-sm text-foreground placeholder-muted-foreground/60 outline-none transition-all focus:border-secondary/40 focus:bg-muted/60 focus:ring-4 focus:ring-secondary/5"
-                  autoFocus
-                />
-              </div>
-              
-              <button
-                type="submit"
-                disabled={creating || !newListName.trim()}
-                className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-6 py-4 text-base font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale disabled:hover:scale-100"
-              >
-                <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
-                {creating ? 'Creando lista...' : 'Crear lista inteligente'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <CreateListModal
+        open={showCreateModal}
+        creating={creating}
+        listName={newListName}
+        onListNameChange={setNewListName}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={createList}
+      />
 
       <MobileDashboardNav />
     </>

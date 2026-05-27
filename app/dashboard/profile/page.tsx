@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/contexts/UserContext'
 import MobileDashboardNav from '@/app/dashboard/_components/MobileDashboardNav'
+import { PrimaryButton, TextInput } from '@/components/ui/FormControls'
 
 type ProfileFields = {
   name: string
@@ -244,21 +245,19 @@ function ProfileForm({
             <div className="flex-1 space-y-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground ml-1">Nombre Completo</label>
-                <input
+                <TextInput
                   type="text"
                   value={profile.name}
                   onChange={(e) => setProfile((prev) => ({ ...prev, name: e.target.value }))}
-                  className={inputClassName}
                   placeholder="Cómo te llamas..."
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground ml-1">URL de Avatar</label>
-                <input
+                <TextInput
                   type="url"
                   value={profile.avatar_url}
                   onChange={(e) => setProfile((prev) => ({ ...prev, avatar_url: e.target.value }))}
-                  className={inputClassName}
                   placeholder="https://tu-imagen.jpg"
                 />
               </div>
@@ -289,14 +288,9 @@ function ProfileForm({
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-8 py-4 text-base font-bold text-secondary-foreground shadow-xl shadow-secondary/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 sm:w-auto"
-        >
-          <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
+        <PrimaryButton type="submit" disabled={saving} className="w-full px-8 sm:w-auto">
           {saving ? 'Guardando...' : 'Salvar Cambios'}
-        </button>
+        </PrimaryButton>
       </div>
     </form>
   )
