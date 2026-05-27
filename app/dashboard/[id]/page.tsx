@@ -32,6 +32,7 @@ type ShoppingListShare = {
   id: string
   list_id: string
   user_id: string
+  shared_email: string | null
 }
 
 type InviteLink = {
@@ -93,10 +94,9 @@ export default function ListDetailPage() {
   const canManageMembers = list?.owner_id === user?.id
 
   const loadMembers = useCallback(async () => {
-    const { data, error } = await insforge.database
-      .from('list_shares')
-      .select('*')
-      .eq('list_id', listId)
+    const { data, error } = await insforge.database.rpc('list_share_members', {
+      target_list_id: listId,
+    })
 
     if (error) {
       setError(error.message)
@@ -934,6 +934,7 @@ export default function ListDetailPage() {
     0
   )
   const total = items.reduce((sum, item) => sum + (item.product?.current_price || 0) * item.quantity, 0)
+  const remainingTotal = Math.max(total - checkedTotal, 0)
   const progress = total > 0 ? (checkedTotal / total) * 100 : 0
 
   if (authLoading || !user) {
@@ -957,10 +958,10 @@ export default function ListDetailPage() {
         onMembersChanged={handleMembersRealtimeChange}
         userId={user.id}
       />
-      <div className="mx-auto w-full max-w-4xl space-y-10">
-        <header className="space-y-8">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-4">
+      <div className="mx-auto w-full max-w-4xl space-y-6">
+        <header className="space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-3">
               <Link
                 href="/dashboard"
                 className="group inline-flex items-center gap-2 rounded-full border border-border bg-muted/20 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-muted/40 hover:text-foreground"
@@ -970,26 +971,52 @@ export default function ListDetailPage() {
                 </svg>
                 Volver al Panel
               </Link>
-              <div className="space-y-1">
-                <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
-                  {list?.name || 'Cargando...'}
-                </h1>
-                <p className="text-sm text-muted-foreground font-medium tracking-tight">Gestiona productos, ajusta cantidades y controla tu presupuesto.</p>
+              <div className="space-y-2">
+                <div className="space-y-0.5">
+                  <h1 className="truncate text-2xl font-bold tracking-tight text-foreground sm:text-3xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
+                    {list?.name || 'Cargando...'}
+                  </h1>
+                  <p className="text-xs text-muted-foreground font-medium tracking-tight sm:text-sm">Gestiona productos, cantidades y presupuesto.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  <div className="rounded-2xl border border-border bg-muted/20 px-3 py-2 backdrop-blur-sm sm:min-w-[130px]">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Total compra</p>
+                    <p className="text-base font-black text-foreground">{total.toFixed(2)} <span className="text-[10px] font-bold text-secondary">EUR</span></p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-muted/20 px-3 py-2 backdrop-blur-sm sm:min-w-[130px]">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Queda</p>
+                    <p className="text-base font-black text-foreground">{remainingTotal.toFixed(2)} <span className="text-[10px] font-bold text-secondary">EUR</span></p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="relative group overflow-hidden rounded-[2rem] border border-secondary/20 bg-secondary/5 p-6 backdrop-blur-md min-w-[240px]">
-              <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 to-transparent opacity-50" />
-              <div className="relative space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary/80">Total Marcado</p>
-                <p className="text-3xl font-black text-foreground">{checkedTotal.toFixed(2)} <span className="text-sm font-bold text-secondary">EUR</span></p>
-                <div className="mt-4 w-full h-1.5 bg-muted/20 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-secondary to-secondary/80 transition-all duration-700 ease-out"
-                    style={{ width: `${progress}%` }}
-                  />
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[250px]">
+              <div className="relative group overflow-hidden rounded-2xl border border-secondary/20 bg-secondary/5 p-4 backdrop-blur-md">
+                <div className="absolute inset-0 bg-gradient-to-br from-secondary/10 to-transparent opacity-50" />
+                <div className="relative space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-secondary/80">Total Marcado</p>
+                  <p className="text-2xl font-black text-foreground">{checkedTotal.toFixed(2)} <span className="text-xs font-bold text-secondary">EUR</span></p>
+                  <div className="mt-2 w-full h-1 bg-muted/20 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-secondary to-secondary/80 transition-all duration-700 ease-out"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
                 </div>
               </div>
+              {activeTab === 'products' && (
+                <button
+                  onClick={() => setShowAddProduct(true)}
+                  className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-4 py-3 text-xs font-bold uppercase tracking-widest text-secondary-foreground shadow-lg shadow-secondary/20 transition-all hover:scale-[1.01] active:scale-[0.98]"
+                >
+                  <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="relative w-4 h-4 mr-2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  <span className="relative">Añadir Producto</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1151,15 +1178,6 @@ export default function ListDetailPage() {
               </section>
             )}
             
-            <button
-              onClick={() => setShowAddProduct(true)}
-              className="group relative flex w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted/20 py-4 text-sm font-bold text-foreground backdrop-blur-sm transition-all hover:bg-muted/40 active:scale-[0.98]"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4 mr-2 text-secondary">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Añadir Producto
-            </button>
           </div>
         ) : activeTab === 'settings' ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1222,7 +1240,7 @@ export default function ListDetailPage() {
                           <div className="grid gap-2">
                             {members.map((member) => (
                               <div key={member.id} className="flex items-center justify-between rounded-xl bg-muted/20 p-3 ring-1 ring-border/20">
-                                <span className="text-sm font-medium text-muted-foreground truncate mr-2">{member.user_id}</span>
+                                <span className="text-sm font-medium text-muted-foreground truncate mr-2">{member.shared_email || member.user_id}</span>
                                 <button
                                   onClick={() => removeMember(member)}
                                   disabled={removingMemberId === member.id}
