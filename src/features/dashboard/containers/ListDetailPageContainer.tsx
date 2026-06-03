@@ -9,6 +9,7 @@ import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
 import { AddProductModal } from '@/src/features/dashboard/components/list/AddProductModal'
 import { FloatingActionButton } from '@/src/components/atoms/FloatingActionButton'
 import { CheckedListItemRow, PendingListItemRow } from '@/src/features/dashboard/components/list/ListItemRow'
+import { Toast } from '@/src/components/atoms/Toast'
 import type { CreatedListProduct, DashboardTab, DashboardTabDefinition, InviteExpiryOption, InviteLink, ListChangedRealtimePayload, ListItem, Product, RealtimeEventPayload, ShareByEmailResult, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
 import { createInviteLinkRecord, createProductForList, deleteListItem, deleteListItems, deleteListShare, deleteShoppingList, fetchActiveInviteLinks, fetchListById, fetchListItemByProduct, fetchListItems, fetchListMembership, fetchListProductSummary, fetchListShareMembers, fetchOwnListProducts, fetchVisibleListProducts, formatInviteStatus, getInviteExpiryDate, incrementListItemQuantity, insertListItem, inviteExpiryOptions, publishListRealtimeEvent, publishUserListsRealtimeEvent, revokeInviteLinkRecord, shareListWithEmail, updateListItemChecked, updateListItemQuantity, updateShoppingListName } from '@/src/features/dashboard/services/listDetailService'
 
@@ -1290,11 +1291,7 @@ export default function ListDetailPage() {
         )}
       </div>
 
-      {successMessage && (
-        <div className="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-2xl border border-border bg-foreground px-4 py-3 text-xs font-bold text-background shadow-xl">
-          {successMessage}
-        </div>
-      )}
+      <Toast message={successMessage} />
 
       <FloatingActionButton
         visible={!showAddProduct}

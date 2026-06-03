@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@/src/store/UserContext'
 import MobileDashboardNav from '@/src/layout/MobileDashboardNav'
 import { ProfileForm } from '@/src/features/dashboard/components/profile/ProfileForm'
+import { Toast } from '@/src/components/atoms/Toast'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -35,7 +36,10 @@ export default function ProfilePage() {
     if (result.error) {
       setThemeError(result.error)
     } else {
-      setThemeSuccess('Preferencia de tema guardada.')
+      setThemeSuccess('Tema actualizado')
+      window.setTimeout(() => {
+        setThemeSuccess((current) => (current === 'Tema actualizado' ? '' : current))
+      }, 1800)
     }
 
     setSavingTheme(false)
@@ -67,8 +71,8 @@ export default function ProfilePage() {
             </div>
           </header>
 
-          <div className="grid gap-8 lg:grid-cols-5">
-            <div className="lg:col-span-3 space-y-8">
+          <div className="grid gap-6 lg:gap-8 lg:grid-cols-5">
+            <div className="lg:col-span-3 space-y-6 lg:space-y-8">
               <section className="rounded-3xl sm:rounded-[2.5rem] border border-border bg-muted/20 p-6 sm:p-10 backdrop-blur-md">
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary ml-1">Configuración Pública</span>
                 <ProfileForm
@@ -81,14 +85,11 @@ export default function ProfilePage() {
                   onSave={updateProfile}
                 />
               </section>
-            </div>
 
-            <div className="lg:col-span-2 space-y-8">
-              <section className="rounded-3xl sm:rounded-[2.5rem] border border-border bg-muted/20 p-6 sm:p-10 backdrop-blur-md space-y-8">
-                <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary ml-1">Detalles de Cuenta</span>
+              <section className="rounded-3xl sm:rounded-[2.5rem] border border-border bg-muted/20 p-6 sm:p-10 backdrop-blur-md space-y-4">
                 <div className="space-y-3">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">Tema</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary ml-1">Preferencia de Tema</span>
+                  <div className="grid grid-cols-2 gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => handleThemeChange('light')}
@@ -119,15 +120,13 @@ export default function ProfilePage() {
                       {themeError}
                     </div>
                   )}
-                  {themeSuccess && (
-                    <div className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-xs font-medium text-primary">
-                      {themeSuccess}
-                    </div>
-                  )}
                 </div>
+              </section>
+            </div>
 
-                <div className="h-px bg-border/30" />
-
+            <div className="lg:col-span-2 space-y-6 lg:space-y-8">
+              <section className="rounded-3xl sm:rounded-[2.5rem] border border-border bg-muted/20 p-6 sm:p-10 backdrop-blur-md space-y-6">
+                <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary ml-1">Detalles de Cuenta</span>
                 <div className="space-y-4">
                   {[
                     { label: 'Correo Electrónico', value: user.email },
@@ -156,6 +155,8 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        <Toast message={themeSuccess} />
 
         <MobileDashboardNav />
       </main>
