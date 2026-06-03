@@ -115,7 +115,6 @@ export type AcceptedInvite = {
 export type ProfileFields = {
   name: string
   avatar_url: string
-  bio: string
 }
 
 export type NewProductDraft = {

@@ -76,7 +76,6 @@ export default function ProfilePage() {
                   initialProfile={{
                     name: typeof user.profile?.name === 'string' ? user.profile.name : '',
                     avatar_url: typeof user.profile?.avatar_url === 'string' ? user.profile.avatar_url : '',
-                    bio: typeof user.profile?.bio === 'string' ? user.profile.bio : '',
                   }}
                   currentProfile={user.profile || {}}
                   onSave={updateProfile}

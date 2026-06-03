@@ -24,15 +24,7 @@ export function ProfileForm({
 
     const payload: ProfileData = {
       ...currentProfile,
-      name: profile.name.trim(),
-      bio: profile.bio.trim(),
-    }
-
-    const avatar = profile.avatar_url.trim()
-    if (avatar) {
-      payload.avatar_url = avatar
-    } else {
-      delete payload.avatar_url
+      name: profile.name,
     }
 
     const result = await onSave(payload)
@@ -74,27 +66,8 @@ export function ProfileForm({
                   placeholder="Cómo te llamas..."
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-muted-foreground ml-1">URL de Avatar</label>
-                <TextInput
-                  type="url"
-                  value={profile.avatar_url}
-                  onChange={(e) => setProfile((prev) => ({ ...prev, avatar_url: e.target.value }))}
-                  placeholder="https://tu-imagen.jpg"
-                />
-              </div>
             </div>
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-xs font-bold text-muted-foreground ml-1">Biografía Breve</label>
-          <textarea
-            value={profile.bio}
-            onChange={(e) => setProfile((prev) => ({ ...prev, bio: e.target.value }))}
-            className={`${inputClassName} h-32 resize-none`}
-            placeholder="Cuenta algo sobre ti..."
-          />
         </div>
       </div>
 
