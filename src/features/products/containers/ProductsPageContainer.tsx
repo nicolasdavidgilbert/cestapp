@@ -352,7 +352,7 @@ export default function ProductsPage() {
   return (
     <>
       <main className="min-h-screen w-full px-4 sm:px-6 py-8 pb-40">
-        <div className="mx-auto w-full max-w-6xl space-y-10">
+        <div className="mx-auto w-full max-w-4xl space-y-10">
           <header className="flex min-h-[9rem] flex-col justify-between gap-6 sm:min-h-[9.5rem]">
             <div className="space-y-1.5 px-1">
               <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
@@ -430,7 +430,7 @@ export default function ProductsPage() {
               )}
             </div>
           ) : (
-            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {filteredProducts.map((product) => (
                 <ProductCard key={product.id} product={product} onOpen={(nextProduct) => void openProductEditor(nextProduct)} />
               ))}
