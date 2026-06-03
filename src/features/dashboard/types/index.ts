@@ -26,6 +26,7 @@ export type ShoppingListShare = {
   list_id: string
   user_id: string
   shared_email: string | null
+  avatar_url: string | null
 }
 
 export type DashboardList = ShoppingList & {
@@ -202,6 +203,7 @@ export type RealtimeEventPayload = Record<string, unknown>
 export type ProfileData = Record<string, unknown>
 
 export type ProfileFormProps = {
+  email: string
   initialProfile: ProfileFields
   currentProfile: ProfileData
   onSave: (profile: ProfileData) => Promise<{ error?: string }>

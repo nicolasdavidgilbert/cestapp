@@ -2,11 +2,13 @@
 
 import { FormEvent, useState } from 'react'
 import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
+import { UserAvatar } from '@/src/components/atoms/UserAvatar'
 import type { ProfileData, ProfileFields, ProfileFormProps } from '@/src/features/dashboard/types'
 
 export function ProfileForm({
   initialProfile,
   currentProfile,
+  email,
   onSave,
 }: ProfileFormProps) {
   const [profile, setProfile] = useState<ProfileFields>(initialProfile)
@@ -43,18 +45,12 @@ export function ProfileForm({
         <div className="space-y-4">
           <div className="flex flex-col gap-8 sm:flex-row sm:items-center">
             <div className="relative group flex justify-center sm:justify-start">
-              <div className="h-28 w-28 rounded-3xl overflow-hidden ring-4 ring-border/20 bg-muted/30 flex items-center justify-center transition-all group-hover:ring-secondary/30">
-                {profile.avatar_url ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={profile.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
-                  </>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-12 h-12 text-muted-foreground">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                  </svg>
-                )}
-              </div>
+              <UserAvatar
+                email={email}
+                avatarUrl={profile.avatar_url}
+                size={112}
+                className="rounded-3xl ring-4 ring-border/20 transition-all group-hover:ring-secondary/30"
+              />
             </div>
             <div className="flex-1 space-y-4">
               <div className="space-y-2">

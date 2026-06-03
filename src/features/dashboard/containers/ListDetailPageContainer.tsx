@@ -6,6 +6,7 @@ import { useUser } from '@/src/store/UserContext'
 import { useListRealtime } from '@/src/features/dashboard/hooks/useListRealtime'
 import { useListDerivedState } from '@/src/features/dashboard/hooks/useListDerivedState'
 import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
+import { UserAvatar } from '@/src/components/atoms/UserAvatar'
 import { AddProductModal } from '@/src/features/dashboard/components/list/AddProductModal'
 import { FloatingActionButton } from '@/src/components/atoms/FloatingActionButton'
 import { CheckedListItemRow, PendingListItemRow } from '@/src/features/dashboard/components/list/ListItemRow'
@@ -1174,9 +1175,17 @@ export default function ListDetailPage() {
                           <div className="grid gap-2">
                             {members.map((member) => (
                               <div key={member.id} className="flex items-center justify-between rounded-xl bg-muted/20 p-3 ring-1 ring-border/20">
-                                <div className="min-w-0 mr-2">
-                                  <span className="block truncate text-sm font-medium text-muted-foreground">{member.shared_email || member.user_id}</span>
-                                  <span className="text-[10px] font-bold uppercase tracking-widest text-secondary/70">Editor</span>
+                                <div className="flex items-center gap-3 min-w-0 mr-2">
+                                  <UserAvatar
+                                    email={member.shared_email || member.user_id}
+                                    avatarUrl={member.avatar_url}
+                                    size={36}
+                                    className="rounded-xl shrink-0 ring-2 ring-border/10"
+                                  />
+                                  <div className="min-w-0">
+                                    <span className="block truncate text-sm font-medium text-muted-foreground">{member.shared_email || member.user_id}</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-secondary/70">Editor</span>
+                                  </div>
                                 </div>
                                 <button
                                   onClick={() => removeMember(member)}

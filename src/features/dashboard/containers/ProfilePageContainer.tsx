@@ -77,6 +77,7 @@ export default function ProfilePage() {
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary ml-1">Configuración Pública</span>
                 <ProfileForm
                   key={`${user.id}:${user.updatedAt || 'static'}`}
+                  email={user.email}
                   initialProfile={{
                     name: typeof user.profile?.name === 'string' ? user.profile.name : '',
                     avatar_url: typeof user.profile?.avatar_url === 'string' ? user.profile.avatar_url : '',
