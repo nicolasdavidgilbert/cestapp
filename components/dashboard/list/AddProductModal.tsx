@@ -58,6 +58,12 @@ export function AddProductModal({
   onCreateMissingProduct,
   onCreateAndAddProduct,
 }: AddProductModalProps) {
+  const addedProductIds = new Set(items.map((item) => item.product_id))
+  const orderedFilteredProducts = [
+    ...filteredProducts.filter((product) => !addedProductIds.has(product.id)),
+    ...filteredProducts.filter((product) => addedProductIds.has(product.id)),
+  ]
+
   return (
     <AppModal
       open={open}
@@ -126,8 +132,8 @@ export function AddProductModal({
                 </div>
               </form>
             ) : (
-              filteredProducts.map((product) => {
-                const isAdded = items.some((item) => item.product_id === product.id)
+              orderedFilteredProducts.map((product) => {
+                const isAdded = addedProductIds.has(product.id)
                 return (
                   <button
                     key={product.id}

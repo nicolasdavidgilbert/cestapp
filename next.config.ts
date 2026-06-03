@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['saturno.taile4db48.ts.net'],
+  allowedDevOrigins: ['saturno', 'saturno.taile4db48.ts.net'],
   /* config options here */
 };
 

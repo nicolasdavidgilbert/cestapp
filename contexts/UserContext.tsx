@@ -212,7 +212,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const refreshSession = useCallback(async (): Promise<RefreshResult> => {
     try {
-      const refreshResponse = await insforge.getHttpClient().handleTokenRefresh()
+      const { data: refreshResponse, error } = await insforge.auth.refreshSession()
+
+      if (error || !refreshResponse?.accessToken) {
+        if (isAuthSessionError(error)) {
+          await handleRefreshFailure()
+          return { ok: false, reason: 'auth' }
+        }
+
+        return { ok: false, reason: 'transient' }
+      }
+
       persistTokens(
         refreshResponse.accessToken ?? null,
         refreshResponse.refreshToken ?? readCookie(REFRESH_TOKEN_COOKIE)

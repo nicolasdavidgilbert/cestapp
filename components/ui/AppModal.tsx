@@ -58,10 +58,10 @@ export function ModalHeader({
   closeButtonClassName,
 }: ModalHeaderProps) {
   return (
-    <div className={joinClasses('flex items-center justify-between border-b border-border bg-foreground/[0.02] p-8', className)}>
-      <div className="space-y-1">
-        <h2 className={joinClasses('text-2xl font-bold tracking-tight text-foreground', titleClassName)}>{title}</h2>
-        {subtitle && <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{subtitle}</p>}
+    <div className={joinClasses('flex items-center justify-between border-b border-border bg-foreground/[0.02] p-5 sm:p-8', className)}>
+      <div className="space-y-0.5 sm:space-y-1">
+        <h2 className={joinClasses('text-xl sm:text-2xl font-bold tracking-tight text-foreground leading-tight', titleClassName)}>{title}</h2>
+        {subtitle && <p className="text-[10px] sm:text-xs font-medium uppercase tracking-widest text-muted-foreground">{subtitle}</p>}
       </div>
       <button
         type="button"

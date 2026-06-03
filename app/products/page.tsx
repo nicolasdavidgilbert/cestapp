@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useUser } from '@/contexts/UserContext'
 import { insforge } from '@/lib/insforge'
 import MobileDashboardNav from '@/app/dashboard/_components/MobileDashboardNav'
@@ -33,6 +32,13 @@ type ProductsCacheEntry = {
   products: Product[]
 }
 
+type AuthErrorLike = {
+  status?: unknown
+  statusCode?: unknown
+  error?: unknown
+  message?: unknown
+}
+
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000
 const PRODUCTS_CACHE_PREFIX = 'products_cache_v1:'
 const PRODUCTS_MIN_REFETCH_GAP_MS = 8 * 1000
@@ -45,6 +51,17 @@ function isAuthErrorMessage(message: string | null | undefined) {
     normalized.includes('token expired') ||
     normalized.includes('session invalid')
   )
+}
+
+function isAuthError(error: unknown) {
+  if (typeof error === 'string') return isAuthErrorMessage(error)
+
+  const details = (error ?? {}) as AuthErrorLike
+  const status = typeof details.status === 'number' ? details.status : typeof details.statusCode === 'number' ? details.statusCode : null
+  const code = typeof details.error === 'string' ? details.error.toLowerCase() : ''
+  const message = typeof details.message === 'string' ? details.message : error instanceof Error ? error.message : ''
+
+  return status === 401 || status === 403 || code === 'invalid_token' || code === 'unauthorized' || code === 'token_expired' || isAuthErrorMessage(message)
 }
 
 function getProductsCacheKey(userId: string) {
@@ -149,21 +166,30 @@ export default function ProductsPage() {
       setLoading(true)
     }
 
-    const { data, error } = await insforge.database
-      .from('products')
-      .select('*')
-      .eq('created_by', user.id)
-      .order('updated_at', { ascending: false })
+    const fetchProducts = () =>
+      insforge.database
+        .from('products')
+        .select('*')
+        .eq('created_by', user.id)
+        .order('updated_at', { ascending: false })
+
+    let { data, error } = await fetchProducts()
+
+    if (isAuthError(error)) {
+      await refreshUser()
+      ;({ data, error } = await fetchProducts())
+    }
 
     if (error) {
       setError(error.message)
       applyProducts([])
     } else if (data) {
+      setError('')
       applyProducts(data)
     }
 
     setLoading(false)
-  }, [user, applyProducts])
+  }, [user, applyProducts, refreshUser])
 
   const loadHistory = useCallback(async (productId: string) => {
     const { data, error } = await insforge.database
@@ -267,7 +293,7 @@ export default function ProductsPage() {
     if (price !== null) {
       await insforge.database.from('price_history').insert([
         {
-          product_id: data.id,
+        product_id: data.id,
           price,
         },
       ])
@@ -335,7 +361,7 @@ export default function ProductsPage() {
     const insertHistory = () =>
       insforge.database.from('price_history').insert([
         {
-          product_id: selectedProduct.id,
+        product_id: selectedProduct.id,
           price: parsedPrice,
           created_by: user.id,
         },
@@ -471,27 +497,16 @@ export default function ProductsPage() {
 
   return (
     <>
-      <main className="min-h-screen w-full px-4 sm:px-6 py-12 pb-40">
-        <div className="mx-auto w-full max-w-6xl space-y-12">
-          <header className="space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-6">
-              <div className="space-y-4">
-                <Link
-                  href="/dashboard"
-                  className="group inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-muted/60 hover:text-foreground"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 transition-transform group-hover:-translate-x-1">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                  </svg>
-                  Volver a Listas
-                </Link>
-                <div className="space-y-1">
-                  <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
-                    Catálogo Maestro
-                  </h1>
-                  <p className="text-sm text-muted-foreground font-medium tracking-tight">Gestiona productos, descripciones y haz seguimiento histórico de precios.</p>
-                </div>
-              </div>
+      <main className="min-h-screen w-full px-4 sm:px-6 py-8 pb-40">
+        <div className="mx-auto w-full max-w-6xl space-y-10">
+          <header className="flex min-h-[9rem] flex-col justify-between gap-6 sm:min-h-[9.5rem]">
+            <div className="space-y-1.5 px-1">
+              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
+                Catálogo
+              </h1>
+              <p className="max-w-2xl text-sm font-medium tracking-tight text-muted-foreground">
+                Gestiona productos, descripciones y precios.
+              </p>
             </div>
 
             <div className="flex items-center gap-4">
@@ -568,45 +583,46 @@ export default function ProductsPage() {
             </div>
           )}
         </div>
-
-        <FloatingActionButton
-          visible={!showCreateModal}
-          ariaLabel="Crear producto nuevo"
-          onClick={() => setShowCreateModal(true)}
-        />
-
-        <ProductCreateModal
-          open={showCreateModal}
-          creating={creating}
-          newProduct={newProduct}
-          setNewProduct={setNewProduct}
-          onClose={() => setShowCreateModal(false)}
-          onSubmit={createProduct}
-        />
-
-        <ProductEditorModal
-          open={showEditor}
-          product={selectedProduct}
-          editorForm={editorForm}
-          setEditorForm={setEditorForm}
-          savingProduct={savingProduct}
-          priceHistory={priceHistory}
-          editingHistory={editingHistory}
-          setEditingHistory={setEditingHistory}
-          newHistoryPrice={newHistoryPrice}
-          setNewHistoryPrice={setNewHistoryPrice}
-          addingHistory={addingHistory}
-          savingHistoryId={savingHistoryId}
-          deletingHistoryId={deletingHistoryId}
-          onClose={closeEditor}
-          onSaveProduct={() => void saveProductChanges()}
-          onAddHistoryPrice={() => void addNewHistoryPrice()}
-          onSaveHistoryEntry={(entryId) => void saveHistoryEntry(entryId)}
-          onDeleteHistoryEntry={(entryId) => void deleteHistoryEntry(entryId)}
-        />
-
-        <MobileDashboardNav />
       </main>
+
+      <FloatingActionButton
+        visible={!showCreateModal}
+        ariaLabel="Crear producto nuevo"
+        onClick={() => setShowCreateModal(true)}
+        className="bottom-28 !z-[60]"
+      />
+
+      <ProductCreateModal
+        open={showCreateModal}
+        creating={creating}
+        newProduct={newProduct}
+        setNewProduct={setNewProduct}
+        onClose={() => setShowCreateModal(false)}
+        onSubmit={createProduct}
+      />
+
+      <ProductEditorModal
+        open={showEditor}
+        product={selectedProduct}
+        editorForm={editorForm}
+        setEditorForm={setEditorForm}
+        savingProduct={savingProduct}
+        priceHistory={priceHistory}
+        editingHistory={editingHistory}
+        setEditingHistory={setEditingHistory}
+        newHistoryPrice={newHistoryPrice}
+        setNewHistoryPrice={setNewHistoryPrice}
+        addingHistory={addingHistory}
+        savingHistoryId={savingHistoryId}
+        deletingHistoryId={deletingHistoryId}
+        onClose={closeEditor}
+        onSaveProduct={() => void saveProductChanges()}
+        onAddHistoryPrice={() => void addNewHistoryPrice()}
+        onSaveHistoryEntry={(entryId) => void saveHistoryEntry(entryId)}
+        onDeleteHistoryEntry={(entryId) => void deleteHistoryEntry(entryId)}
+      />
+
+      <MobileDashboardNav />
     </>
   )
 }

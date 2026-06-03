@@ -1,7 +1,6 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/contexts/UserContext'
 import MobileDashboardNav from '@/app/dashboard/_components/MobileDashboardNav'
@@ -61,23 +60,16 @@ export default function ProfilePage() {
 
   return (
     <>
-      <main className="min-h-screen w-full px-4 sm:px-6 py-10 sm:py-16 pb-40">
-        <div className="mx-auto w-full max-w-4xl space-y-12">
-          <header className="space-y-4">
-             <Link
-                href="/dashboard"
-                className="group inline-flex items-center gap-2 rounded-full border border-border bg-muted/20 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-muted/40 hover:text-foreground"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 transition-transform group-hover:-translate-x-1">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                </svg>
-                Regresar
-              </Link>
+      <main className="min-h-screen w-full px-4 sm:px-6 py-8 pb-40">
+        <div className="mx-auto w-full max-w-4xl space-y-6">
+          <header className="space-y-6">
             <div className="space-y-1.5 px-1">
-              <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
-                Tu Identidad
+              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
+                Perfil
               </h1>
-              <p className="text-sm text-muted-foreground font-medium tracking-tight">Personaliza tu presencia y gestiona tu cuenta.</p>
+              <p className="max-w-2xl text-sm font-medium tracking-tight text-muted-foreground">
+                Gestiona las preferencias de tu cuenta.
+              </p>
             </div>
           </header>
 
@@ -289,7 +281,7 @@ function ProfileForm({
         )}
 
         <PrimaryButton type="submit" disabled={saving} className="w-full px-8 sm:w-auto">
-          {saving ? 'Guardando...' : 'Salvar Cambios'}
+          {saving ? 'Guardando...' : 'Guardar Cambios'}
         </PrimaryButton>
       </div>
     </form>

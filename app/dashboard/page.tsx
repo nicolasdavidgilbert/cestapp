@@ -36,9 +36,40 @@ type ListsCacheEntry = {
   lists: DashboardList[]
 }
 
+type AuthErrorLike = {
+  status?: unknown
+  statusCode?: unknown
+  error?: unknown
+  message?: unknown
+}
+
 const LISTS_CACHE_TTL_MS = 5 * 60 * 1000
 const LISTS_MIN_REFETCH_GAP_MS = 8 * 1000
 const LISTS_CACHE_PREFIX = 'dashboard_lists_cache_v1:'
+
+function isAuthError(error: unknown) {
+  if (typeof error === 'string') {
+    const normalized = error.toLowerCase()
+    return normalized.includes('invalid token') || normalized.includes('unauthorized') || normalized.includes('token expired') || normalized.includes('session invalid')
+  }
+
+  const details = (error ?? {}) as AuthErrorLike
+  const status = typeof details.status === 'number' ? details.status : typeof details.statusCode === 'number' ? details.statusCode : null
+  const code = typeof details.error === 'string' ? details.error.toLowerCase() : ''
+  const message = typeof details.message === 'string' ? details.message.toLowerCase() : error instanceof Error ? error.message.toLowerCase() : ''
+
+  return (
+    status === 401 ||
+    status === 403 ||
+    code === 'invalid_token' ||
+    code === 'unauthorized' ||
+    code === 'token_expired' ||
+    message.includes('invalid token') ||
+    message.includes('unauthorized') ||
+    message.includes('token expired') ||
+    message.includes('session invalid')
+  )
+}
 
 function getListsCacheKey(userId: string) {
   return `${LISTS_CACHE_PREFIX}${userId}`
@@ -94,7 +125,7 @@ function reconcileLists(previous: DashboardList[], incoming: DashboardList[]) {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { user, loading: authLoading } = useUser()
+  const { user, loading: authLoading, refreshUser } = useUser()
   const [lists, setLists] = useState<DashboardList[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -104,6 +135,7 @@ export default function DashboardPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const lastFetchAtRef = useRef(0)
   const hydratedFromCacheRef = useRef(false)
+  const loadListsRef = useRef<((options?: { force?: boolean; keepCurrentUI?: boolean; retried?: boolean }) => Promise<void>) | null>(null)
 
   const applyLists = useCallback(
     (nextLists: DashboardList[]) => {
@@ -120,10 +152,11 @@ export default function DashboardPage() {
     [user]
   )
 
-  const loadLists = useCallback(async (options?: { force?: boolean; keepCurrentUI?: boolean }) => {
+  const loadLists = useCallback(async (options?: { force?: boolean; keepCurrentUI?: boolean; retried?: boolean }) => {
     if (!user) return
     const force = options?.force ?? false
     const keepCurrentUI = options?.keepCurrentUI ?? false
+    const retried = options?.retried ?? false
     const now = Date.now()
     if (!force && now - lastFetchAtRef.current < LISTS_MIN_REFETCH_GAP_MS) {
       return
@@ -141,6 +174,12 @@ export default function DashboardPage() {
       .order('updated_at', { ascending: false })
 
     if (ownError) {
+      if (isAuthError(ownError) && !retried) {
+        await refreshUser()
+        lastFetchAtRef.current = 0
+        return loadListsRef.current?.({ force: true, keepCurrentUI: true, retried: true })
+      }
+
       setError(ownError.message)
       applyLists([])
       setLoading(false)
@@ -153,6 +192,12 @@ export default function DashboardPage() {
       .eq('user_id', user.id)
 
     if (sharesError) {
+      if (isAuthError(sharesError) && !retried) {
+        await refreshUser()
+        lastFetchAtRef.current = 0
+        return loadListsRef.current?.({ force: true, keepCurrentUI: true, retried: true })
+      }
+
       setError(sharesError.message)
       applyLists((ownLists || []).map((list) => ({ ...list, access: 'owner' as const })))
       setLoading(false)
@@ -174,6 +219,12 @@ export default function DashboardPage() {
         .order('updated_at', { ascending: false })
 
       if (sharedError) {
+        if (isAuthError(sharedError) && !retried) {
+          await refreshUser()
+          lastFetchAtRef.current = 0
+          return loadListsRef.current?.({ force: true, keepCurrentUI: true, retried: true })
+        }
+
         setError(sharedError.message)
       } else {
         sharedLists = data || []
@@ -190,7 +241,11 @@ export default function DashboardPage() {
     applyLists(mergedLists)
     setError('')
     setLoading(false)
-  }, [user, applyLists])
+  }, [user, applyLists, refreshUser])
+
+  useEffect(() => {
+    loadListsRef.current = loadLists
+  }, [loadLists])
 
   useEffect(() => {
     if (!user) return
@@ -319,16 +374,16 @@ export default function DashboardPage() {
 
   return (
     <>
-      <main className="min-h-screen w-full px-4 sm:px-6 py-12 pb-40">
+      <main className="min-h-screen w-full px-4 sm:px-6 py-8 pb-40">
         <div className="mx-auto w-full max-w-4xl space-y-10">
-          <header className="space-y-6">
-            <div className="space-y-2">
+          <header className="flex min-h-[9rem] flex-col justify-between gap-6 sm:min-h-[9.5rem]">
+            <div className="space-y-1.5 px-1">
               <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Tu Centro de Control</span>
               <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl bg-clip-text text-transparent bg-gradient-to-br from-foreground via-foreground/90 to-foreground/60">
                 Mis Listas
               </h1>
             </div>
-            
+
             <div className="flex items-center gap-4">
               <div className="group relative flex-1">
                 <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">

@@ -26,6 +26,7 @@ export function createServerClient(accessToken?: string) {
     baseUrl,
     anonKey,
     isServerMode: true,
+    autoRefreshToken: false,
     edgeFunctionToken: accessToken
   })
 }
