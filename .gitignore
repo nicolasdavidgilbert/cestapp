@@ -40,6 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Android signing
+android/*.keystore
+android/keystore.properties
+
 # InsForge & AI agent skills
 .insforge
 .agent
