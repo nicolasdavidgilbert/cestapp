@@ -126,6 +126,54 @@ export default function SignInPage() {
     }
   }, [handleNativeOAuthCallback])
 
+  useEffect(() => {
+    if (isNativeCapacitorApp()) return
+
+    const pendingRedirect = sessionStorage.getItem(OAUTH_REDIRECT_PATH_KEY)
+    if (!pendingRedirect) return
+
+    let cancelled = false
+
+    queueMicrotask(async () => {
+      setLoading(true)
+      const params = new URLSearchParams(window.location.search)
+      const oauthCode = params.get('insforge_code') ?? params.get('code')
+      const codeVerifier = sessionStorage.getItem(OAUTH_CODE_VERIFIER_KEY) ?? localStorage.getItem(OAUTH_CODE_VERIFIER_KEY)
+
+      if (oauthCode) {
+        const { error: exchangeError } = await insforge.auth.exchangeOAuthCode(oauthCode, codeVerifier ?? undefined)
+        if (exchangeError && !cancelled) {
+          setError(exchangeError.message)
+          setLoading(false)
+          return
+        }
+      }
+
+      for (let attempt = 0; attempt < 12 && !cancelled; attempt += 1) {
+        await refreshUser()
+        const { data } = await insforge.auth.getCurrentUser()
+        if (data?.user) {
+          sessionStorage.removeItem(OAUTH_REDIRECT_PATH_KEY)
+          sessionStorage.removeItem(OAUTH_CODE_VERIFIER_KEY)
+          localStorage.removeItem(OAUTH_CODE_VERIFIER_KEY)
+          router.replace(sanitizeRedirectPath(pendingRedirect))
+          return
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 150))
+      }
+
+      if (!cancelled) {
+        setError('No se pudo completar Google OAuth. Intentalo de nuevo.')
+        setLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshUser, router])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -153,24 +201,15 @@ export default function SignInPage() {
 
     const redirectTo = isNativeApp
       ? getNativeOAuthRedirectUrl()
-      : `${window.location.origin}${redirectPath}`
+      : `${window.location.origin}/sign-in`
 
-    if (isNativeApp) {
-      sessionStorage.setItem(OAUTH_REDIRECT_PATH_KEY, redirectPath)
-    }
+    sessionStorage.setItem(OAUTH_REDIRECT_PATH_KEY, redirectPath)
 
-    const { data, error } = await insforge.auth.signInWithOAuth(
-      isNativeApp
-        ? {
-            provider,
-            redirectTo,
-            skipBrowserRedirect: true,
-          }
-        : {
-            provider,
-            redirectTo,
-          }
-    )
+    const { data, error } = await insforge.auth.signInWithOAuth({
+      provider,
+      redirectTo,
+      skipBrowserRedirect: true,
+    })
 
     if (error) {
       if (error.message === 'An unexpected error occurred during OAuth initialization') {
@@ -182,24 +221,28 @@ export default function SignInPage() {
       return
     }
 
-    if (isNativeApp) {
-      if (data?.codeVerifier) {
-        sessionStorage.setItem(OAUTH_CODE_VERIFIER_KEY, data.codeVerifier)
-        localStorage.setItem(OAUTH_CODE_VERIFIER_KEY, data.codeVerifier)
-      }
+    if (data?.codeVerifier) {
+      sessionStorage.setItem(OAUTH_CODE_VERIFIER_KEY, data.codeVerifier)
+      localStorage.setItem(OAUTH_CODE_VERIFIER_KEY, data.codeVerifier)
+    }
 
-      if (data?.url) {
-        try {
-          await openOAuthUrlInNativeBrowser(data.url)
-        } catch {
-          setError('No se pudo abrir Google OAuth. Revisa que el dispositivo tenga un navegador instalado y activo.')
-          setLoading(false)
-        }
-      } else {
-        setError('No se pudo abrir Google OAuth en la app.')
+    if (!data?.url) {
+      setError('No se pudo abrir Google OAuth.')
+      setLoading(false)
+      return
+    }
+
+    if (isNativeApp) {
+      try {
+        await openOAuthUrlInNativeBrowser(data.url)
+      } catch {
+        setError('No se pudo abrir Google OAuth. Revisa que el dispositivo tenga un navegador instalado y activo.')
         setLoading(false)
       }
+      return
     }
+
+    window.location.href = data.url
   }
 
   return (

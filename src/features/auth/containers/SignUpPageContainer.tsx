@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useUser } from '@/src/store/UserContext'
 import { AuthLayout } from '@/src/features/auth/components/AuthLayout'
 import { PremiumInput } from '@/src/features/auth/components/PremiumInput'
+import { sanitizeRedirectPath } from '@/src/features/auth/services/redirectService'
 
 const onboardingHighlights = [
   { title: 'Registro rápido', description: 'Empieza en menos de 1 minuto desde móvil.' },
@@ -33,10 +34,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [showVerification, setShowVerification] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
-  const [redirectPath] = useState<string>(() => {
-    const redirect = initialSearchParams?.get('redirect') ?? ''
-    return redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/dashboard'
-  })
+  const [redirectPath] = useState<string>(() => sanitizeRedirectPath(initialSearchParams?.get('redirect')))
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

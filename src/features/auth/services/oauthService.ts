@@ -1,17 +1,13 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { Browser } from '@capacitor/browser'
 import type { NativeBrowserPlugin } from '@/src/features/auth/types'
+export { sanitizeRedirectPath } from '@/src/features/auth/services/redirectService'
 
 const NativeBrowser = registerPlugin<NativeBrowserPlugin>('NativeBrowser')
 
 export const CAPACITOR_APP_SCHEME = 'site.insforge.cestapp'
 export const OAUTH_REDIRECT_PATH_KEY = 'oauth_redirect_path'
 export const OAUTH_CODE_VERIFIER_KEY = 'oauth_code_verifier'
-
-export function sanitizeRedirectPath(path: string | null | undefined) {
-  const value = path ?? ''
-  return value.startsWith('/') && !value.startsWith('//') ? value : '/dashboard'
-}
 
 export function isNativeCapacitorApp() {
   try {

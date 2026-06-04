@@ -1,4 +1,5 @@
 import type { ErrorLike } from '@/src/types/auth'
+import { sanitizeRedirectPath } from '@/src/features/auth/services/redirectService'
 
 export const ACCESS_TOKEN_COOKIE = 'insforge_client_access_token'
 export const REFRESH_TOKEN_COOKIE = 'insforge_client_refresh_token'
@@ -55,7 +56,7 @@ export function redirectToLogin() {
   const pathname = window.location.pathname
   if (pathname.startsWith('/sign-in')) return
 
-  const redirect = pathname + (window.location.search || '')
+  const redirect = sanitizeRedirectPath(pathname + (window.location.search || '') + (window.location.hash || ''))
   const params = new URLSearchParams()
   params.set('redirect', redirect)
   params.set('session_expired', '1')
