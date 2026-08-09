@@ -1,4 +1,4 @@
-import { insforge } from '@/src/services/insforge'
+import { getInsforgeClient } from '@/src/services/insforge'
 import type { InviteExpiryOption, InviteLink } from '@/src/features/dashboard/types'
 
 export const inviteExpiryOptions = [
@@ -27,11 +27,11 @@ export function formatInviteStatus(invite: InviteLink) {
 }
 
 export function fetchListShareMembers(listId: string) {
-  return insforge.database.rpc('list_share_members', { target_list_id: listId })
+  return getInsforgeClient().database.rpc('list_share_members', { target_list_id: listId })
 }
 
 export function fetchActiveInviteLinks(listId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('list_invite_links')
     .select('*')
     .eq('list_id', listId)
@@ -41,15 +41,15 @@ export function fetchActiveInviteLinks(listId: string) {
 }
 
 export function fetchListById(listId: string) {
-  return insforge.database.from('shopping_lists').select('*').eq('id', listId).single()
+  return getInsforgeClient().database.from('shopping_lists').select('*').eq('id', listId).single()
 }
 
 export function fetchListItems(listId: string) {
-  return insforge.database.from('shopping_list_items').select('*').eq('list_id', listId)
+  return getInsforgeClient().database.from('shopping_list_items').select('*').eq('list_id', listId)
 }
 
 export function fetchOwnListProducts(userId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('products')
     .select('id, title, current_price')
     .eq('created_by', userId)
@@ -57,7 +57,7 @@ export function fetchOwnListProducts(userId: string) {
 }
 
 export function fetchListMembership(listId: string, userId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('list_shares')
     .select('*')
     .eq('list_id', listId)
@@ -66,15 +66,15 @@ export function fetchListMembership(listId: string, userId: string) {
 }
 
 export function fetchVisibleListProducts(listId: string) {
-  return insforge.database.rpc('list_visible_products', { target_list_id: listId })
+  return getInsforgeClient().database.rpc('list_visible_products', { target_list_id: listId })
 }
 
 export function publishListRealtimeEvent(listChannel: string, eventName: string, payload: Record<string, unknown>) {
-  return insforge.realtime.publish(listChannel, eventName, payload)
+  return getInsforgeClient().realtime.publish(listChannel, eventName, payload)
 }
 
 export function publishUserListsRealtimeEvent(targetUserId: string, listId: string, action: string, by?: string) {
-  return insforge.realtime.publish('user:' + targetUserId + ':lists', 'user_lists_changed', {
+  return getInsforgeClient().realtime.publish('user:' + targetUserId + ':lists', 'user_lists_changed', {
     list_id: listId,
     action,
     by,
@@ -83,14 +83,14 @@ export function publishUserListsRealtimeEvent(targetUserId: string, listId: stri
 }
 
 export function shareListWithEmail(listId: string, targetEmail: string) {
-  return insforge.database.rpc('share_list_with_email', {
+  return getInsforgeClient().database.rpc('share_list_with_email', {
     target_list_id: listId,
     target_email: targetEmail,
   })
 }
 
 export function createInviteLinkRecord(listId: string, createdBy: string, expiresAt: string | null) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('list_invite_links')
     .insert([{ list_id: listId, created_by: createdBy, expires_at: expiresAt }])
     .select('*')
@@ -98,14 +98,14 @@ export function createInviteLinkRecord(listId: string, createdBy: string, expire
 }
 
 export function revokeInviteLinkRecord(inviteId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('list_invite_links')
     .update({ revoked_at: new Date().toISOString() })
     .eq('id', inviteId)
 }
 
 export function updateShoppingListName(listId: string, name: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_lists')
     .update({ name, updated_at: new Date().toISOString() })
     .eq('id', listId)
@@ -114,11 +114,11 @@ export function updateShoppingListName(listId: string, name: string) {
 }
 
 export function deleteListShare(shareId: string) {
-  return insforge.database.from('list_shares').delete().eq('id', shareId)
+  return getInsforgeClient().database.from('list_shares').delete().eq('id', shareId)
 }
 
 export function incrementListItemQuantity(itemId: string, quantity: number) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_list_items')
     .update({ quantity })
     .eq('id', itemId)
@@ -127,7 +127,7 @@ export function incrementListItemQuantity(itemId: string, quantity: number) {
 }
 
 export function insertListItem(listId: string, productId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_list_items')
     .insert([{ list_id: listId, product_id: productId, quantity: 1 }])
     .select('*')
@@ -135,7 +135,7 @@ export function insertListItem(listId: string, productId: string) {
 }
 
 export function createProductForList(listId: string, title: string, description: string | null, price: number | null) {
-  return insforge.database.rpc('create_product_for_list', {
+  return getInsforgeClient().database.rpc('create_product_for_list', {
     target_list_id: listId,
     product_title: title,
     product_description: description,
@@ -144,11 +144,11 @@ export function createProductForList(listId: string, title: string, description:
 }
 
 export function fetchListProductSummary(productId: string) {
-  return insforge.database.from('products').select('id, title, current_price').eq('id', productId).single()
+  return getInsforgeClient().database.from('products').select('id, title, current_price').eq('id', productId).single()
 }
 
 export function fetchListItemByProduct(listId: string, productId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_list_items')
     .select('*')
     .eq('list_id', listId)
@@ -157,21 +157,21 @@ export function fetchListItemByProduct(listId: string, productId: string) {
 }
 
 export function updateListItemChecked(itemId: string, checked: boolean) {
-  return insforge.database.from('shopping_list_items').update({ checked }).eq('id', itemId)
+  return getInsforgeClient().database.from('shopping_list_items').update({ checked }).eq('id', itemId)
 }
 
 export function updateListItemQuantity(itemId: string, quantity: number) {
-  return insforge.database.from('shopping_list_items').update({ quantity }).eq('id', itemId)
+  return getInsforgeClient().database.from('shopping_list_items').update({ quantity }).eq('id', itemId)
 }
 
 export function deleteListItem(itemId: string) {
-  return insforge.database.from('shopping_list_items').delete().eq('id', itemId)
+  return getInsforgeClient().database.from('shopping_list_items').delete().eq('id', itemId)
 }
 
 export function deleteListItems(itemIds: string[]) {
-  return insforge.database.from('shopping_list_items').delete().in('id', itemIds)
+  return getInsforgeClient().database.from('shopping_list_items').delete().in('id', itemIds)
 }
 
 export function deleteShoppingList(listId: string) {
-  return insforge.database.from('shopping_lists').delete().eq('id', listId)
+  return getInsforgeClient().database.from('shopping_lists').delete().eq('id', listId)
 }

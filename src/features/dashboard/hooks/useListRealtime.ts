@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { insforge } from '@/src/services/insforge'
+import { useInsforgeClient } from '@/src/hooks/useInsforgeClient'
 import type { ListRealtimeProps } from '@/src/features/dashboard/types'
 
 export function useListRealtime({
@@ -12,6 +12,8 @@ export function useListRealtime({
   onMembersChanged,
   onInviteLinksChanged,
 }: ListRealtimeProps) {
+  const insforge = useInsforgeClient()
+
   useEffect(() => {
     if (!listId || !userId) return
 
@@ -85,5 +87,5 @@ export function useListRealtime({
       insforge.realtime.off('disconnect', handleDisconnect)
       insforge.realtime.unsubscribe(channel)
     }
-  }, [canManageMembers, listId, onInviteLinksChanged, onListChanged, onMembersChanged, userId])
+  }, [canManageMembers, insforge, listId, onInviteLinksChanged, onListChanged, onMembersChanged, userId])
 }

@@ -1,213 +1,179 @@
-import { createClient, InsForgeClient } from '@insforge/sdk'
-import { cookies, headers } from 'next/headers'
-import type { AuthErrorLike } from '@/src/types/auth'
+import 'server-only'
+
+import { createClient } from '@insforge/sdk'
+import { cookies } from 'next/headers'
+import type { AuthErrorLike, User } from '@/src/types/auth'
 
 const baseUrl = process.env.NEXT_PUBLIC_INSFORGE_URL!
 const anonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY!
+const isProduction = process.env.NODE_ENV === 'production'
+const cookiePrefix = isProduction ? '__Host-' : ''
 
-// We keep server cookies separate and httpOnly for security (XSS protection)
-const accessCookie = 'insforge_access_token'
-const refreshCookie = 'insforge_refresh_token'
+export const ACCESS_TOKEN_MAX_AGE_SECONDS = 60 * 15
+export const REFRESH_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+export const OAUTH_COOKIE_MAX_AGE_SECONDS = 60 * 10
+
+export const AUTH_COOKIE_NAMES = {
+  access: `${cookiePrefix}cestapp_access`,
+  refresh: `${cookiePrefix}cestapp_refresh`,
+  oauthVerifier: `${cookiePrefix}cestapp_oauth_verifier`,
+  oauthRedirect: `${cookiePrefix}cestapp_oauth_redirect`,
+} as const
+
+const legacyCookieNames = [
+  'insforge_access_token',
+  'insforge_refresh_token',
+  'insforge_client_access_token',
+  'insforge_client_refresh_token',
+]
 
 const authCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: isProduction,
   sameSite: 'lax' as const,
   path: '/',
-  maxAge: 60 * 60 * 24 * 7
+  priority: 'high' as const,
 }
 
+export type ServerAuthSession = {
+  user: User
+  accessToken: string
+}
 
-/**
- * Basic client factory for server-side use
- */
 export function createServerClient(accessToken?: string) {
   return createClient({
     baseUrl,
     anonKey,
     isServerMode: true,
     autoRefreshToken: false,
-    edgeFunctionToken: accessToken
+    edgeFunctionToken: accessToken,
   })
-}
-
-/**
- * Cookie management helpers
- */
-export async function setAuthCookies(accessToken: string, refreshToken: string) {
-  const cookieStore = await cookies()
-  cookieStore.set(accessCookie, accessToken, { ...authCookieOptions, maxAge: 60 * 15 })
-  cookieStore.set(refreshCookie, refreshToken, authCookieOptions)
 }
 
 export async function getAuthCookies() {
   const cookieStore = await cookies()
   return {
-    accessToken: cookieStore.get(accessCookie)?.value,
-    refreshToken: cookieStore.get(refreshCookie)?.value
+    accessToken: cookieStore.get(AUTH_COOKIE_NAMES.access)?.value,
+    refreshToken: cookieStore.get(AUTH_COOKIE_NAMES.refresh)?.value,
+  }
+}
+
+export async function setAuthCookies(accessToken: string, refreshToken: string) {
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH_COOKIE_NAMES.access, accessToken, {
+    ...authCookieOptions,
+    maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
+  })
+  cookieStore.set(AUTH_COOKIE_NAMES.refresh, refreshToken, {
+    ...authCookieOptions,
+    maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
+  })
+
+  for (const name of legacyCookieNames) {
+    cookieStore.delete(name)
   }
 }
 
 export async function clearAuthCookies() {
   const cookieStore = await cookies()
-  cookieStore.delete(accessCookie)
-  cookieStore.delete(refreshCookie)
+  cookieStore.set(AUTH_COOKIE_NAMES.access, '', { ...authCookieOptions, maxAge: 0 })
+  cookieStore.set(AUTH_COOKIE_NAMES.refresh, '', { ...authCookieOptions, maxAge: 0 })
+  for (const name of legacyCookieNames) {
+    cookieStore.delete(name)
+  }
 }
 
-/**
- * Logic to detect if an error is due to an expired/invalid session
- */
-export function isAuthError(error: AuthErrorLike | null | undefined) {
-  if (!error) return false
-  const status = error.status || error.statusCode
-  const message = error.message?.toLowerCase() || ''
+export async function setOAuthCookies(codeVerifier: string, redirectPath: string) {
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH_COOKIE_NAMES.oauthVerifier, codeVerifier, {
+    ...authCookieOptions,
+    maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
+  })
+  cookieStore.set(AUTH_COOKIE_NAMES.oauthRedirect, redirectPath, {
+    ...authCookieOptions,
+    maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
+  })
+}
+
+export async function getOAuthCookies() {
+  const cookieStore = await cookies()
+  return {
+    codeVerifier: cookieStore.get(AUTH_COOKIE_NAMES.oauthVerifier)?.value,
+    redirectPath: cookieStore.get(AUTH_COOKIE_NAMES.oauthRedirect)?.value,
+  }
+}
+
+export async function clearOAuthCookies() {
+  const cookieStore = await cookies()
+  cookieStore.set(AUTH_COOKIE_NAMES.oauthVerifier, '', { ...authCookieOptions, maxAge: 0 })
+  cookieStore.set(AUTH_COOKIE_NAMES.oauthRedirect, '', { ...authCookieOptions, maxAge: 0 })
+}
+
+export function getRequestOrigin(request: Request) {
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const host = forwardedHost ?? request.headers.get('host')
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const requestUrl = new URL(request.url)
+  const protocol = forwardedProto ?? requestUrl.protocol.replace(':', '')
+
+  return host ? `${protocol}://${host}` : requestUrl.origin
+}
+
+export function isTrustedAuthRequest(request: Request) {
+  const origin = request.headers.get('origin')
+  if (!origin) return !isProduction
+
+  try {
+    return new URL(origin).origin === getRequestOrigin(request)
+  } catch {
+    return false
+  }
+}
+
+export function getErrorStatus(error: unknown) {
+  const details = (error ?? {}) as AuthErrorLike
+  return typeof details.statusCode === 'number'
+    ? details.statusCode
+    : typeof details.status === 'number'
+      ? details.status
+      : 500
+}
+
+export function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error
+    ? error.message
+    : typeof (error as AuthErrorLike | null)?.message === 'string'
+      ? (error as AuthErrorLike).message!
+      : fallback
+}
+
+export function isInvalidSessionError(error: unknown) {
+  const details = (error ?? {}) as AuthErrorLike
+  const status = getErrorStatus(error)
+  const code = typeof details.error === 'string' ? details.error.toLowerCase() : ''
+  const message = (details.message ?? '').toLowerCase()
+
   return (
     status === 401 ||
     status === 403 ||
+    code.includes('invalid_token') ||
+    code.includes('token_expired') ||
+    code.includes('refresh_token') ||
     message.includes('invalid token') ||
+    message.includes('token expired') ||
     message.includes('session invalid') ||
-    message.includes('unauthorized')
+    (message.includes('refresh token') && message.includes('invalid'))
   )
 }
 
-function getSdkError(result: unknown): AuthErrorLike | null {
-  if (!result || typeof result !== 'object' || !('error' in result)) {
-    return null
-  }
+export function toServerAuthSession(data: unknown): ServerAuthSession | null {
+  if (!data || typeof data !== 'object') return null
 
-  const error = result.error
-  return error && typeof error === 'object' ? (error as AuthErrorLike) : null
-}
-
-/**
- * Manual session refresh for server mode
- */
-export async function refreshSession() {
-  const { refreshToken } = await getAuthCookies()
-  if (!refreshToken) return null
-
-  const insforge = createServerClient()
-  const { data, error } = await insforge.auth.refreshSession({ refreshToken })
-
-  if (error || !data?.accessToken || !data?.refreshToken) {
-    await clearAuthCookies()
-    return null
-  }
-
-  await setAuthCookies(data.accessToken, data.refreshToken)
-  return data.accessToken
-}
-
-/**
- * THE SOLUTION: A unified authenticated client getter.
- * Use this for all server-side database or auth calls.
- * 
- * Usage:
- * const insforge = await getInsforge();
- * const { data, error } = await insforge.safeExecute(c => c.database.from('items').select('*'));
- */
-export async function getInsforge() {
-  const { accessToken } = await getAuthCookies()
-  const client = createServerClient(accessToken)
+  const candidate = data as { user?: unknown; accessToken?: unknown }
+  if (!candidate.user || typeof candidate.accessToken !== 'string') return null
 
   return {
-    ...client,
-    /**
-     * Executes any SDK call and retries once if it fails with an auth error
-     */
-    async safeExecute<T>(call: (client: InsForgeClient) => Promise<T>): Promise<T> {
-      const result = await call(client)
-      const error = getSdkError(result)
-
-      if (isAuthError(error)) {
-        const newAccessToken = await refreshSession()
-        if (newAccessToken) {
-          const retryClient = createServerClient(newAccessToken)
-          return await call(retryClient)
-        }
-      }
-      return result
-    }
+    user: candidate.user as User,
+    accessToken: candidate.accessToken,
   }
-}
-
-/**
- * Auth Actions
- */
-export async function getCurrentUser() {
-  const insforge = await getInsforge()
-  const { data } = await insforge.safeExecute((c) => c.auth.getCurrentUser())
-  return data?.user ?? null
-}
-
-export async function signIn(formData: FormData) {
-  const insforge = createServerClient()
-  const { data, error } = await insforge.auth.signInWithPassword({
-    email: String(formData.get('email') ?? '').trim(),
-    password: String(formData.get('password') ?? '')
-  })
-
-  if (error || !data?.accessToken || !data?.refreshToken) {
-    return { success: false, error: error?.message ?? 'Sign in failed.' }
-  }
-
-  await setAuthCookies(data.accessToken, data.refreshToken)
-  return { success: true }
-}
-
-export async function signUp(formData: FormData) {
-  const insforge = createServerClient()
-  const redirectTo = new URL('/sign-in', await getServerAppOrigin()).toString()
-  const { data, error } = await insforge.auth.signUp({
-    email: String(formData.get('email') ?? '').trim(),
-    password: String(formData.get('password') ?? ''),
-    name: String(formData.get('name') ?? '').trim(),
-    redirectTo
-  })
-
-  if (error) return { success: false, error: error.message }
-
-  if (data?.requireEmailVerification) {
-    return { success: true, requireEmailVerification: true, verifyEmailMethod: 'code' }
-  }
-
-  if (data?.accessToken && data?.refreshToken) {
-    await setAuthCookies(data.accessToken, data.refreshToken)
-    return { success: true }
-  }
-
-  return { success: false, error: 'Registration failed.' }
-}
-
-export async function signOut() {
-  const { accessToken } = await getAuthCookies()
-  if (accessToken) {
-    const insforge = createServerClient(accessToken)
-    await insforge.auth.signOut()
-  }
-  await clearAuthCookies()
-}
-
-export async function signInWithOAuth(provider: string, redirectTo: string) {
-  const insforge = createServerClient()
-  const { data, error } = await insforge.auth.signInWithOAuth({
-    provider: provider as "google",
-    redirectTo,
-    skipBrowserRedirect: true
-  })
-
-  if (error) throw error
-  return data?.url // The caller (Server Action) should redirect to this URL
-}
-
-/**
- * Helpers
- */
-async function getServerAppOrigin() {
-  const headerStore = await headers()
-  const host = headerStore.get('x-forwarded-host') ?? headerStore.get('host')
-  const proto = headerStore.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
-
-  if (host) return `${proto}://${host}`
-  return process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
 }

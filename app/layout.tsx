@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/src/store/UserContext";
@@ -11,6 +11,20 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: "Cesta++ - Listas de la compra",
   description: "Gestiona tus listas de la compra y productos",
+  applicationName: "Cesta++",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Cesta++",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: [{ url: "/pwa-icon/180", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2d7a44",
 };
 
 export default function RootLayout({

@@ -1,8 +1,8 @@
-import { insforge } from '@/src/services/insforge'
+import { getInsforgeClient } from '@/src/services/insforge'
 import type { DashboardList, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
 
 export function fetchOwnLists(userId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_lists')
     .select('*')
     .eq('owner_id', userId)
@@ -10,14 +10,14 @@ export function fetchOwnLists(userId: string) {
 }
 
 export function fetchListShares(userId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('list_shares')
     .select('*')
     .eq('user_id', userId)
 }
 
 export function fetchSharedLists(sharedIds: string[]) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_lists')
     .select('*')
     .in('id', sharedIds)
@@ -25,7 +25,7 @@ export function fetchSharedLists(sharedIds: string[]) {
 }
 
 export function createShoppingList(name: string, ownerId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('shopping_lists')
     .insert([{ name, owner_id: ownerId }])
     .select()
@@ -73,7 +73,7 @@ export function reconcileLists(previous: DashboardList[], incoming: DashboardLis
 }
 
 export function publishDashboardListEvent(userId: string, listId: string, action: string) {
-  return insforge.realtime.publish('user:' + userId + ':lists', 'user_lists_changed', {
+  return getInsforgeClient().realtime.publish('user:' + userId + ':lists', 'user_lists_changed', {
     list_id: listId,
     action,
   })

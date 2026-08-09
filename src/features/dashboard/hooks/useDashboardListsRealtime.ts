@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect } from 'react'
-import { insforge } from '@/src/services/insforge'
+import { useInsforgeClient } from '@/src/hooks/useInsforgeClient'
 import type { DashboardListsRealtimeOptions, RealtimePayload } from '@/src/features/dashboard/types'
 
 export function useDashboardListsRealtime({ userId, onListsChanged }: DashboardListsRealtimeOptions) {
+  const insforge = useInsforgeClient()
+
   useEffect(() => {
     if (!userId) return
 
@@ -54,5 +56,5 @@ export function useDashboardListsRealtime({ userId, onListsChanged }: DashboardL
       insforge.realtime.off('connect', handleConnect)
       insforge.realtime.unsubscribe(channel)
     }
-  }, [onListsChanged, userId])
+  }, [insforge, onListsChanged, userId])
 }

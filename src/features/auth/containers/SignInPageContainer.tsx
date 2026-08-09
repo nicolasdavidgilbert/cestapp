@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { App as CapacitorApp } from '@capacitor/app'
 import { useUser } from '@/src/store/UserContext'
-import { insforge } from '@/src/services/insforge'
+import { getInsforgeClient } from '@/src/services/insforge'
 import { AuthLayout } from '@/src/features/auth/components/AuthLayout'
 import { PremiumInput } from '@/src/features/auth/components/PremiumInput'
 import type { SignInQueryState } from '@/src/features/auth/types'
+import { exchangeOAuthWeb, startOAuthWeb } from '@/src/features/auth/services/webAuthService'
 import { OAUTH_CODE_VERIFIER_KEY, OAUTH_REDIRECT_PATH_KEY, canUseWebOAuth, closeOAuthBrowser, getNativeOAuthRedirectUrl, isExpectedNativeOAuthCallback, isNativeCapacitorApp, openOAuthUrlInNativeBrowser, sanitizeRedirectPath } from '@/src/features/auth/services/oauthService'
 
 export default function SignInPage() {
@@ -79,7 +80,7 @@ export default function SignInPage() {
       setError('')
       setLoading(true)
 
-      const { error: exchangeError } = await insforge.auth.exchangeOAuthCode(oauthCode, codeVerifier ?? undefined)
+      const { error: exchangeError } = await getInsforgeClient().auth.exchangeOAuthCode(oauthCode, codeVerifier ?? undefined)
 
       if (exchangeError) {
         setError(exchangeError.message)
@@ -129,44 +130,27 @@ export default function SignInPage() {
   useEffect(() => {
     if (isNativeCapacitorApp()) return
 
-    const pendingRedirect = sessionStorage.getItem(OAUTH_REDIRECT_PATH_KEY)
-    if (!pendingRedirect) return
+    const params = new URLSearchParams(window.location.search)
+    const oauthCode = params.get('insforge_code') ?? params.get('code')
+    if (!oauthCode || processingOAuthRef.current) return
 
     let cancelled = false
+    processingOAuthRef.current = true
 
     queueMicrotask(async () => {
       setLoading(true)
-      const params = new URLSearchParams(window.location.search)
-      const oauthCode = params.get('insforge_code') ?? params.get('code')
-      const codeVerifier = sessionStorage.getItem(OAUTH_CODE_VERIFIER_KEY) ?? localStorage.getItem(OAUTH_CODE_VERIFIER_KEY)
+      const result = await exchangeOAuthWeb(oauthCode)
+      if (cancelled) return
 
-      if (oauthCode) {
-        const { error: exchangeError } = await insforge.auth.exchangeOAuthCode(oauthCode, codeVerifier ?? undefined)
-        if (exchangeError && !cancelled) {
-          setError(exchangeError.message)
-          setLoading(false)
-          return
-        }
-      }
-
-      for (let attempt = 0; attempt < 12 && !cancelled; attempt += 1) {
-        await refreshUser()
-        const { data } = await insforge.auth.getCurrentUser()
-        if (data?.user) {
-          sessionStorage.removeItem(OAUTH_REDIRECT_PATH_KEY)
-          sessionStorage.removeItem(OAUTH_CODE_VERIFIER_KEY)
-          localStorage.removeItem(OAUTH_CODE_VERIFIER_KEY)
-          router.replace(sanitizeRedirectPath(pendingRedirect))
-          return
-        }
-
-        await new Promise((resolve) => window.setTimeout(resolve, 150))
-      }
-
-      if (!cancelled) {
-        setError('No se pudo completar Google OAuth. Intentalo de nuevo.')
+      if (!result.data) {
+        setError(result.error ?? 'No se pudo completar Google OAuth. Inténtalo de nuevo.')
         setLoading(false)
+        processingOAuthRef.current = false
+        return
       }
+
+      await refreshUser()
+      if (!cancelled) router.replace(sanitizeRedirectPath(result.data.redirect))
     })
 
     return () => {
@@ -199,15 +183,22 @@ export default function SignInPage() {
       return
     }
 
-    const redirectTo = isNativeApp
-      ? getNativeOAuthRedirectUrl()
-      : `${window.location.origin}/sign-in`
+    if (!isNativeApp) {
+      const result = await startOAuthWeb(provider, redirectPath)
+      if (!result.data?.url) {
+        setError(result.error ?? 'No se pudo abrir Google OAuth.')
+        setLoading(false)
+        return
+      }
+
+      window.location.href = result.data.url
+      return
+    }
 
     sessionStorage.setItem(OAUTH_REDIRECT_PATH_KEY, redirectPath)
-
-    const { data, error } = await insforge.auth.signInWithOAuth({
+    const { data, error } = await getInsforgeClient().auth.signInWithOAuth({
       provider,
-      redirectTo,
+      redirectTo: getNativeOAuthRedirectUrl(),
       skipBrowserRedirect: true,
     })
 
@@ -232,17 +223,12 @@ export default function SignInPage() {
       return
     }
 
-    if (isNativeApp) {
-      try {
-        await openOAuthUrlInNativeBrowser(data.url)
-      } catch {
-        setError('No se pudo abrir Google OAuth. Revisa que el dispositivo tenga un navegador instalado y activo.')
-        setLoading(false)
-      }
-      return
+    try {
+      await openOAuthUrlInNativeBrowser(data.url)
+    } catch {
+      setError('No se pudo abrir Google OAuth. Revisa que el dispositivo tenga un navegador instalado y activo.')
+      setLoading(false)
     }
-
-    window.location.href = data.url
   }
 
   return (

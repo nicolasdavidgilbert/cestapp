@@ -1,8 +1,8 @@
-import { insforge } from '@/src/services/insforge'
+import { getInsforgeClient } from '@/src/services/insforge'
 import type { Product } from '@/src/features/products/types'
 
 export function fetchProductsByUser(userId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('products')
     .select('*')
     .eq('created_by', userId)
@@ -10,7 +10,7 @@ export function fetchProductsByUser(userId: string) {
 }
 
 export function fetchProductPriceHistory(productId: string) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('price_history')
     .select('*')
     .eq('product_id', productId)
@@ -18,7 +18,7 @@ export function fetchProductPriceHistory(productId: string) {
 }
 
 export function insertProduct(title: string, description: string | null, price: number | null) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('products')
     .insert([{ title, description, current_price: price }])
     .select('*')
@@ -26,7 +26,7 @@ export function insertProduct(title: string, description: string | null, price: 
 }
 
 export function updateProductDetails(productId: string, title: string, description: string | null) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('products')
     .update({ title, description, updated_at: new Date().toISOString() })
     .eq('id', productId)
@@ -35,7 +35,7 @@ export function updateProductDetails(productId: string, title: string, descripti
 }
 
 export function insertPriceHistory(productId: string, price: number, createdBy?: string) {
-  return insforge.database.from('price_history').insert([
+  return getInsforgeClient().database.from('price_history').insert([
     {
       product_id: productId,
       price,
@@ -45,7 +45,7 @@ export function insertPriceHistory(productId: string, price: number, createdBy?:
 }
 
 export function updateProductCurrentPrice(productId: string, price: number) {
-  return insforge.database
+  return getInsforgeClient().database
     .from('products')
     .update({ current_price: price, updated_at: new Date().toISOString() })
     .eq('id', productId)
@@ -54,11 +54,11 @@ export function updateProductCurrentPrice(productId: string, price: number) {
 }
 
 export function updatePriceHistoryEntry(entryId: string, price: number) {
-  return insforge.database.from('price_history').update({ price }).eq('id', entryId)
+  return getInsforgeClient().database.from('price_history').update({ price }).eq('id', entryId)
 }
 
 export function deletePriceHistoryEntry(entryId: string) {
-  return insforge.database.from('price_history').delete().eq('id', entryId)
+  return getInsforgeClient().database.from('price_history').delete().eq('id', entryId)
 }
 
 export function reconcileProducts(previous: Product[], incoming: Product[]) {
