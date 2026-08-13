@@ -210,9 +210,9 @@ El manifiesto también contiene `android:allowBackup="true"`, lo que aumenta el 
 ### SEC-05: versión vulnerable de Next.js
 
 **Severidad:** alta  
-**Estado:** confirmado por `pnpm audit --prod`
+**Estado:** ✅ resuelto y verificado localmente; pendiente de desplegar en producción
 
-El proyecto utiliza Next.js `16.2.3`. El registro de vulnerabilidades informa de varias incidencias corregidas en versiones posteriores, incluidas denegaciones de servicio relacionadas con React Server Components.
+El proyecto utilizaba Next.js `16.2.3`. El registro de vulnerabilidades informaba de varias incidencias corregidas en versiones posteriores, incluidas denegaciones de servicio relacionadas con React Server Components.
 
 Algunos avisos de bypass de Middleware no son alcanzables actualmente porque el proyecto no tiene `middleware.ts` ni `proxy.ts`. Sin embargo, las vulnerabilidades generales del App Router y de RSC justifican la actualización.
 
@@ -222,6 +222,25 @@ Algunos avisos de bypass de Middleware no son alcanzables actualmente porque el 
 - Leer primero la guía de actualización incluida en `node_modules/next/dist/docs/`.
 - Actualizar `next` y `eslint-config-next` juntos.
 - Ejecutar lint, build y pruebas de las rutas API después de actualizar.
+
+**Resolución aplicada (13 de agosto de 2026):**
+
+- Se actualizaron `next` y `eslint-config-next` conjuntamente a la versión estable exacta `16.3.0`, manteniendo React `19.2.4` y el resto de APIs de la aplicación sin cambios.
+- Se fijó transitivamente `@babel/core` en `7.29.6`. `styled-jsx` lo detecta como peer opcional y la resolución anterior `7.29.0` conservaba un aviso bajo; el parche no modifica ninguna interfaz de la aplicación.
+- Next instala ahora PostCSS `8.5.23` y Nanoid `3.3.18`. `pnpm audit --prod` ya no devuelve avisos cuya cadena de dependencia empiece en Next.
+- No se ejecutaron codemods: el proyecto ya usaba `cookies()` y parámetros asíncronos, ESLint Flat Config y Turbopack, y no contiene Middleware, Proxy, configuración Webpack ni opciones experimentales que requieran migración.
+
+**Verificación realizada:**
+
+- `pnpm install --frozen-lockfile`, TypeScript, ESLint y `git diff --check` finalizaron correctamente. ESLint mantiene un aviso previo no relacionado en `ProfileForm.tsx`, sin errores.
+- El build de producción con Turbopack compiló las 23 rutas, incluidas todas las rutas `/api/auth/*` y `/api/auth/native/*`.
+- Google Fonts no es accesible desde esta máquina. Para verificar la compilación sin cambiar la aplicación se utilizó `NEXT_FONT_GOOGLE_MOCKED_RESPONSES` con la copia de Geist incluida en Next, servida temporalmente desde la IP Tailscale de `saturno`. El despliegue deberá repetir el build normal con acceso a Google Fonts o, en un cambio separado, autoalojar la fuente.
+- El build se ejecutó en el puerto 3100 y se probó mediante `https://saturno.taile4db48.ts.net:8443`. Inicio, registro, dashboard, perfil, productos, manifiesto PWA e icono dinámico respondieron `200` con el tipo de contenido correcto.
+- Las rutas web continuaron rechazando solicitudes sin origen (`403`) y cuerpos inválidos (`400`). Las rutas nativas rechazaron clientes sin identificación (`403`), contextos de navegador (`403`) y cuerpos inválidos (`400`), manteniendo `no-store` y `nosniff`.
+- En un móvil real, la variante Android separada completó login, renovación nativa, recarga sin errores de consola, recuperación tras arranque en frío, logout y un segundo arranque desconectado. El refresh token permaneció fuera de cookies y almacenamiento JavaScript.
+- El APK debug volvió a compilar correctamente.
+
+**Pendiente para producción:** desplegar el frontend, repetir el build sin el fixture de fuente y ejecutar una prueba breve de autenticación antes de publicar el APK actualizado.
 
 ### SEC-06: autenticación expuesta a fuerza bruta y abuso
 
@@ -328,20 +347,26 @@ El análisis ejecutado fue:
 pnpm audit --prod
 ```
 
-Resultado observado:
+Resultado inicial observado:
 
 ```text
 54 vulnerabilidades
 3 bajas · 17 moderadas · 31 altas · 3 críticas
 ```
 
+Después de resolver SEC-05:
+
+```text
+24 vulnerabilidades
+0 bajas · 6 moderadas · 15 altas · 3 críticas
+```
+
 Este total necesita interpretación:
 
-- Las vulnerabilidades de Next.js afectan a una dependencia directa de producción y deben corregirse.
+- Los avisos asociados a Next, PostCSS, Nanoid y Babel se corrigieron en SEC-05.
 - Clerk no se usa y debe eliminarse.
 - Varias incidencias de `tar`, `xmldom` y `brace-expansion` proceden de `@capacitor/cli`; afectan principalmente al proceso de compilación, no al APK ejecutándose. `@capacitor/cli` debería actualizarse y residir en `devDependencies`.
 - `ws` y `socket.io-parser` llegan mediante `@insforge/sdk`; conviene actualizar el SDK cuando publique una cadena corregida.
-- Los avisos de PostCSS y Babel afectan principalmente al proceso de build y no implican que exista XSS explotable actualmente.
 
 ## Estado del despliegue
 
@@ -354,6 +379,8 @@ GET https://cestapp.insforge.site/api/auth/refresh → 404
 La corrección de persistencia de sesión de iPhone existe como cambio local sin confirmar en la rama `android`, pero todavía no está activa en `cestapp.insforge.site`.
 
 Las rutas `/api/auth/native/*` de SEC-04 también son cambios locales. Deben desplegarse antes de distribuir el APK que depende de ellas.
+
+La actualización de Next.js `16.3.0` de SEC-05 también permanece únicamente en la rama `android` y aún no protege el despliegue público.
 
 Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque puede haber cambiado después de la fecha de este documento.
 
@@ -381,7 +408,7 @@ Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque pu
 
 ### Antes del próximo despliegue
 
-- [ ] Actualizar Next.js y `eslint-config-next` a una versión corregida compatible.
+- [x] Actualizar Next.js y `eslint-config-next` a una versión corregida compatible. Resuelto con `16.3.0` y verificado en web y Android.
 - [ ] Eliminar `@clerk/nextjs`.
 - [ ] Actualizar InsForge SDK y Capacitor.
 - [ ] Ejecutar nuevamente `pnpm audit --prod` y revisar los avisos restantes.
@@ -417,7 +444,7 @@ Una corrección de seguridad no debe considerarse terminada hasta demostrar como
 7. ✅ El refresh token de Android no aparece en `document.cookie`, `localStorage` ni `sessionStorage` en el nuevo APK (verificado en móvil real).
 8. Los endpoints de autenticación limitan intentos repetidos y rechazan cuerpos excesivos.
 9. El despliegue devuelve las cabeceras HTTP definidas sin romper OAuth, PWA ni Realtime.
-10. Lint, build de Next.js y build del APK siguen completándose correctamente.
+10. ✅ Lint, build de Next.js y build del APK siguen completándose correctamente tras SEC-05.
 
 ## Limitaciones de esta auditoría
 
