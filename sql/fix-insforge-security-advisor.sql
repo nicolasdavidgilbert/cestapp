@@ -8,25 +8,46 @@
 -- ============================================================
 
 -- ============================================================
--- BLOQUE 1: RLS en particiones + FORCE RLS
+-- BLOQUE 1: RLS, FORCE RLS y aislamiento de particiones
 -- ============================================================
--- Las 11 particiones heredan las policies del padre, pero
--- necesitan ENABLE ROW LEVEL SECURITY explícito.
+-- Las particiones no se exponen directamente a clientes. Las lecturas
+-- autenticadas pasan por la tabla padre y su política RLS.
 
-ALTER TABLE IF EXISTS public.user_activity_events_2026_03 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_04 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_05 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_06 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_07 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_08 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_09 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_10 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_11 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_2026_12 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activity_events_default ENABLE ROW LEVEL SECURITY;
-
--- FORCE RLS para que ni el owner de la tabla bypasee las policies
+ALTER TABLE public.user_activity_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_activity_events FORCE ROW LEVEL SECURITY;
+REVOKE ALL PRIVILEGES ON TABLE public.user_activity_events FROM anon, authenticated;
+GRANT SELECT ON TABLE public.user_activity_events TO authenticated;
+
+DO $$
+DECLARE
+  v_partition record;
+BEGIN
+  FOR v_partition IN
+    SELECT child.relname AS partition_name
+    FROM pg_catalog.pg_inherits inheritance
+    JOIN pg_catalog.pg_class parent ON parent.oid = inheritance.inhparent
+    JOIN pg_catalog.pg_class child ON child.oid = inheritance.inhrelid
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = child.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND parent.relname = 'user_activity_events'
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_partition.partition_name);
+    EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_partition.partition_name);
+    EXECUTE format(
+      'REVOKE ALL PRIVILEGES ON TABLE public.%I FROM anon, authenticated',
+      v_partition.partition_name
+    );
+    EXECUTE format('DROP POLICY IF EXISTS project_admin_policy ON public.%I', v_partition.partition_name);
+    EXECUTE format(
+      'CREATE POLICY project_admin_policy ON public.%I FOR ALL TO project_admin USING (true) WITH CHECK (true)',
+      v_partition.partition_name
+    );
+  END LOOP;
+END;
+$$;
+
+REVOKE ALL PRIVILEGES ON TABLE public.user_activity_events_enriched FROM anon, authenticated;
+GRANT SELECT ON TABLE public.user_activity_events_enriched TO authenticated;
 
 -- ============================================================
 -- BLOQUE 2: Revocar EXECUTE de funciones trigger (8)

@@ -58,10 +58,9 @@ USING (
 CREATE POLICY list_shares_insert
 ON list_shares
 FOR INSERT
-TO public
+TO authenticated
 WITH CHECK (
-  user_id = requesting_user_id()
-  OR public.user_owns_list(list_id)
+  public.user_owns_list(list_id)
 );
 
 CREATE POLICY list_shares_delete
@@ -205,7 +204,7 @@ BEGIN
 
   INSERT INTO public.list_shares (list_id, user_id)
   VALUES (invite_list_id, current_user_id)
-  ON CONFLICT (list_id, user_id) DO NOTHING
+  ON CONFLICT ON CONSTRAINT list_shares_list_id_user_id_key DO NOTHING
   RETURNING id INTO inserted_share_id;
 
   UPDATE public.list_invite_links
@@ -544,6 +543,242 @@ WHERE NOT EXISTS (
   SELECT 1 FROM realtime.channels WHERE pattern = 'user:%:lists'
 );
 
+-- 6b) Realtime authorization and server-side cross-user notifications.
+CREATE OR REPLACE FUNCTION public.can_access_realtime_channel(target_channel text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_current_user_id text := public.requesting_user_id();
+  v_list_id uuid;
+BEGIN
+  IF v_current_user_id IS NULL OR target_channel IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  IF target_channel ~ '^user:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}:lists$' THEN
+    RETURN split_part(target_channel, ':', 2) = v_current_user_id;
+  END IF;
+
+  IF target_channel ~ '^list:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN
+    v_list_id := split_part(target_channel, ':', 2)::uuid;
+    RETURN public.user_can_access_list(v_list_id);
+  END IF;
+
+  RETURN FALSE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.can_access_realtime_channel(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.can_access_realtime_channel(text) TO authenticated, project_admin;
+
+CREATE OR REPLACE FUNCTION public.can_publish_realtime_message(
+  target_channel text,
+  target_event text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.can_access_realtime_channel(target_channel) THEN
+    RETURN FALSE;
+  END IF;
+
+  IF target_channel LIKE 'list:%' THEN
+    RETURN target_event IN ('list_changed', 'members_changed', 'invite_links_changed');
+  END IF;
+
+  IF target_channel LIKE 'user:%:lists' THEN
+    RETURN target_event = 'user_lists_changed';
+  END IF;
+
+  RETURN FALSE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.can_publish_realtime_message(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.can_publish_realtime_message(text, text) TO authenticated, project_admin;
+
+ALTER TABLE realtime.channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE realtime.channels FORCE ROW LEVEL SECURITY;
+ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE realtime.messages FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS cesta_channels_subscribe ON realtime.channels;
+DROP POLICY IF EXISTS cesta_channels_admin ON realtime.channels;
+DROP POLICY IF EXISTS cesta_messages_publish ON realtime.messages;
+DROP POLICY IF EXISTS cesta_messages_admin ON realtime.messages;
+
+CREATE POLICY cesta_channels_subscribe
+ON realtime.channels
+FOR SELECT
+TO authenticated
+USING (
+  enabled
+  AND (
+    (
+      pattern = 'list:%'
+      AND realtime.channel_name() LIKE 'list:%'
+    )
+    OR (
+      pattern = 'user:%:lists'
+      AND realtime.channel_name() LIKE 'user:%:lists'
+    )
+  )
+  AND public.can_access_realtime_channel(realtime.channel_name())
+);
+
+CREATE POLICY cesta_channels_admin
+ON realtime.channels
+FOR ALL
+TO project_admin
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY cesta_messages_publish
+ON realtime.messages
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  sender_type = 'user'
+  AND sender_id::text = public.requesting_user_id()
+  AND public.can_publish_realtime_message(channel_name, event_name)
+);
+
+CREATE POLICY cesta_messages_admin
+ON realtime.messages
+FOR ALL
+TO project_admin
+USING (true)
+WITH CHECK (true);
+
+REVOKE ALL PRIVILEGES ON TABLE realtime.channels FROM anon, authenticated;
+GRANT SELECT ON TABLE realtime.channels TO authenticated;
+REVOKE ALL PRIVILEGES ON TABLE realtime.messages FROM anon, authenticated;
+GRANT INSERT ON TABLE realtime.messages TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.notify_list_shares_realtime()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_list_id uuid := COALESCE(NEW.list_id, OLD.list_id);
+  v_target_user_id text := COALESCE(NEW.user_id, OLD.user_id);
+  v_owner_id text;
+  v_action text := CASE WHEN TG_OP = 'INSERT' THEN 'shared' ELSE 'unshared' END;
+BEGIN
+  SELECT shopping_list.owner_id
+    INTO v_owner_id
+  FROM public.shopping_lists shopping_list
+  WHERE shopping_list.id = v_list_id;
+
+  PERFORM realtime.publish(
+    'list:' || v_list_id::text,
+    'members_changed',
+    jsonb_build_object('action', v_action, 'list_id', v_list_id, 'target_user_id', v_target_user_id)
+  );
+  PERFORM realtime.publish(
+    'user:' || v_target_user_id || ':lists',
+    'user_lists_changed',
+    jsonb_build_object('action', v_action, 'list_id', v_list_id)
+  );
+
+  IF v_owner_id IS NOT NULL THEN
+    PERFORM realtime.publish(
+      'user:' || v_owner_id || ':lists',
+      'user_lists_changed',
+      jsonb_build_object('action', v_action, 'list_id', v_list_id)
+    );
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.notify_list_shares_realtime() FROM PUBLIC, authenticated;
+
+DROP TRIGGER IF EXISTS trg_notify_list_shares_realtime ON public.list_shares;
+CREATE TRIGGER trg_notify_list_shares_realtime
+AFTER INSERT OR DELETE ON public.list_shares
+FOR EACH ROW
+EXECUTE FUNCTION public.notify_list_shares_realtime();
+
+CREATE OR REPLACE FUNCTION public.notify_shopping_lists_realtime()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_list_id uuid := COALESCE(NEW.id, OLD.id);
+  v_owner_id text := COALESCE(NEW.owner_id, OLD.owner_id);
+  v_action text := CASE
+    WHEN TG_OP = 'INSERT' THEN 'created'
+    WHEN TG_OP = 'UPDATE' THEN 'updated'
+    ELSE 'deleted'
+  END;
+  v_member record;
+BEGIN
+  PERFORM realtime.publish(
+    'user:' || v_owner_id || ':lists',
+    'user_lists_changed',
+    jsonb_build_object('action', v_action, 'list_id', v_list_id)
+  );
+
+  FOR v_member IN
+    SELECT share.user_id
+    FROM public.list_shares share
+    WHERE share.list_id = v_list_id
+  LOOP
+    PERFORM realtime.publish(
+      'user:' || v_member.user_id || ':lists',
+      'user_lists_changed',
+      jsonb_build_object('action', v_action, 'list_id', v_list_id)
+    );
+  END LOOP;
+
+  IF TG_OP = 'UPDATE' THEN
+    PERFORM realtime.publish(
+      'list:' || v_list_id::text,
+      'list_changed',
+      jsonb_build_object('action', 'list_updated', 'list_id', v_list_id)
+    );
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.notify_shopping_lists_realtime() FROM PUBLIC, authenticated;
+
+DROP TRIGGER IF EXISTS trg_notify_shopping_lists_realtime_write ON public.shopping_lists;
+CREATE TRIGGER trg_notify_shopping_lists_realtime_write
+AFTER INSERT OR UPDATE ON public.shopping_lists
+FOR EACH ROW
+EXECUTE FUNCTION public.notify_shopping_lists_realtime();
+
+DROP TRIGGER IF EXISTS trg_notify_shopping_lists_realtime_delete ON public.shopping_lists;
+CREATE TRIGGER trg_notify_shopping_lists_realtime_delete
+BEFORE DELETE ON public.shopping_lists
+FOR EACH ROW
+EXECUTE FUNCTION public.notify_shopping_lists_realtime();
+
 -- 7) Full activity tracking for advanced analytics.
 CREATE TABLE IF NOT EXISTS public.user_activity_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -579,7 +814,7 @@ DROP POLICY IF EXISTS user_activity_events_select ON public.user_activity_events
 CREATE POLICY user_activity_events_select
 ON public.user_activity_events
 FOR SELECT
-TO public
+TO authenticated
 USING (
   actor_user_id = requesting_user_id()
   OR (

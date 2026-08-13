@@ -96,7 +96,7 @@ CREATE OR REPLACE FUNCTION public.ensure_user_activity_partition(p_month_start d
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   v_start timestamp with time zone := date_trunc('month', p_month_start::timestamp with time zone);
@@ -108,6 +108,17 @@ BEGIN
     v_partition_name,
     v_start,
     v_end
+  );
+  EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_partition_name);
+  EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_partition_name);
+  EXECUTE format(
+    'REVOKE ALL PRIVILEGES ON TABLE public.%I FROM anon, authenticated',
+    v_partition_name
+  );
+  EXECUTE format('DROP POLICY IF EXISTS project_admin_policy ON public.%I', v_partition_name);
+  EXECUTE format(
+    'CREATE POLICY project_admin_policy ON public.%I FOR ALL TO project_admin USING (true) WITH CHECK (true)',
+    v_partition_name
   );
 
   RETURN v_partition_name;
@@ -269,12 +280,13 @@ CREATE INDEX IF NOT EXISTS user_activity_events_metadata_gin_idx
 
 -- 7) RLS policies tuned for real access paths.
 ALTER TABLE public.user_activity_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_activity_events FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS user_activity_events_select ON public.user_activity_events;
 CREATE POLICY user_activity_events_select
 ON public.user_activity_events
 FOR SELECT
-TO public
+TO authenticated
 USING (
   actor_user_id = requesting_user_id()
   OR (list_id IS NOT NULL AND user_can_access_list(list_id))
@@ -288,6 +300,48 @@ FOR ALL
 TO project_admin
 USING (true)
 WITH CHECK (true);
+
+-- 7b) Partitions are internal implementation details.
+-- Authenticated reads go through the parent so its RLS policy is always applied.
+REVOKE ALL PRIVILEGES ON TABLE public.user_activity_events FROM anon, authenticated;
+GRANT SELECT ON TABLE public.user_activity_events TO authenticated;
+
+DO $$
+DECLARE
+  v_partition record;
+BEGIN
+  FOR v_partition IN
+    SELECT child.relname AS partition_name
+    FROM pg_catalog.pg_inherits inheritance
+    JOIN pg_catalog.pg_class parent ON parent.oid = inheritance.inhparent
+    JOIN pg_catalog.pg_class child ON child.oid = inheritance.inhrelid
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = child.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND parent.relname = 'user_activity_events'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',
+      v_partition.partition_name
+    );
+    EXECUTE format(
+      'ALTER TABLE public.%I FORCE ROW LEVEL SECURITY',
+      v_partition.partition_name
+    );
+    EXECUTE format(
+      'REVOKE ALL PRIVILEGES ON TABLE public.%I FROM anon, authenticated',
+      v_partition.partition_name
+    );
+    EXECUTE format(
+      'DROP POLICY IF EXISTS project_admin_policy ON public.%I',
+      v_partition.partition_name
+    );
+    EXECUTE format(
+      'CREATE POLICY project_admin_policy ON public.%I FOR ALL TO project_admin USING (true) WITH CHECK (true)',
+      v_partition.partition_name
+    );
+  END LOOP;
+END;
+$$;
 
 -- 8) Record function enriched with system metadata.
 CREATE OR REPLACE FUNCTION public.record_user_activity(
@@ -435,6 +489,9 @@ SELECT
 FROM public.user_activity_events e
 LEFT JOIN public.shopping_lists sl ON sl.id = e.list_id
 LEFT JOIN public.products p ON p.id = e.product_id;
+
+REVOKE ALL PRIVILEGES ON TABLE public.user_activity_events_enriched FROM anon, authenticated;
+GRANT SELECT ON TABLE public.user_activity_events_enriched TO authenticated;
 
 -- 11) Monthly automatic partition maintenance (no data pruning by default).
 DO $$

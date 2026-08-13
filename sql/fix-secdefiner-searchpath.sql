@@ -170,7 +170,7 @@ BEGIN
 
   INSERT INTO public.list_shares (list_id, user_id)
   VALUES (invite_list_id, current_user_id)
-  ON CONFLICT (list_id, user_id) DO NOTHING
+  ON CONFLICT ON CONSTRAINT list_shares_list_id_user_id_key DO NOTHING
   RETURNING id INTO inserted_share_id;
 
   UPDATE public.list_invite_links
