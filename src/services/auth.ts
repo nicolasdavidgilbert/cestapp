@@ -9,6 +9,34 @@ const anonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY!
 const isProduction = process.env.NODE_ENV === 'production'
 const cookiePrefix = isProduction ? '__Host-' : ''
 
+function getConfiguredAppOrigin() {
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL
+  if (!configuredOrigin) {
+    throw new Error('NEXT_PUBLIC_APP_URL is required for authentication redirects.')
+  }
+
+  const url = new URL(configuredOrigin)
+  const isDevelopmentLoopback =
+    !isProduction &&
+    url.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+
+  if (
+    (url.protocol !== 'https:' && !isDevelopmentLoopback) ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error('NEXT_PUBLIC_APP_URL must be a trusted HTTPS origin without a path.')
+  }
+
+  return url.origin
+}
+
+const configuredAppOrigin = getConfiguredAppOrigin()
+
 export const ACCESS_TOKEN_MAX_AGE_SECONDS = 60 * 15
 export const REFRESH_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 export const OAUTH_COOKIE_MAX_AGE_SECONDS = 60 * 10
@@ -109,14 +137,8 @@ export async function clearOAuthCookies() {
   cookieStore.set(AUTH_COOKIE_NAMES.oauthRedirect, '', { ...authCookieOptions, maxAge: 0 })
 }
 
-export function getRequestOrigin(request: Request) {
-  const forwardedHost = request.headers.get('x-forwarded-host')
-  const host = forwardedHost ?? request.headers.get('host')
-  const forwardedProto = request.headers.get('x-forwarded-proto')
-  const requestUrl = new URL(request.url)
-  const protocol = forwardedProto ?? requestUrl.protocol.replace(':', '')
-
-  return host ? `${protocol}://${host}` : requestUrl.origin
+export function getRequestOrigin() {
+  return configuredAppOrigin
 }
 
 export function isTrustedAuthRequest(request: Request) {
@@ -124,7 +146,7 @@ export function isTrustedAuthRequest(request: Request) {
   if (!origin) return !isProduction
 
   try {
-    return new URL(origin).origin === getRequestOrigin(request)
+    return new URL(origin).origin === configuredAppOrigin
   } catch {
     return false
   }

@@ -375,13 +375,23 @@ PKCE dificulta que otra aplicación canjee el código sin el verificador, pero n
 ### SEC-11: origen de OAuth basado en cabeceras del proxy
 
 **Severidad:** media condicionada al comportamiento del proxy  
-**Estado:** confirmado en el código; explotación no confirmada en Vercel
+**Estado:** ✅ resuelto y verificado en `security-hardening`; pendiente de configurar la variable y desplegar en producción
 
 `getRequestOrigin` confía en `x-forwarded-host` y `x-forwarded-proto` para construir URLs de redirección. Si un proxy no sobrescribe estas cabeceras de forma segura, un cliente podría influir en el origen calculado.
 
 Las URLs permitidas actualmente en InsForge limitan el impacto, pero el código queda expuesto a una futura mala configuración.
 
-**Corrección recomendada:** utilizar una variable de entorno fija y validada para el origen público de producción. Reservar las cabeceras reenviadas para proxies explícitamente confiables.
+**Resolución aplicada (13 de agosto de 2026):**
+
+- Las rutas de autenticación obtienen ahora su origen exclusivamente de `NEXT_PUBLIC_APP_URL`, conservando `NEXT_PUBLIC_SITE_URL` solo como alias de compatibilidad. `Host`, `X-Forwarded-Host`, `X-Forwarded-Proto` y la URL interna de la solicitud ya no intervienen en redirects ni en la comprobación CSRF.
+- El origen configurado se analiza como URL al cargar el servidor. Los builds de producción exigen HTTPS y rechazan credenciales embebidas, rutas, consultas y fragmentos. `pnpm dev` permite HTTP únicamente para direcciones loopback explícitas.
+- La misma constante validada construye los `redirectTo` de registro y OAuth y se compara con `Origin` en todas las rutas web de autenticación.
+- `.env.local` utiliza `https://saturno.taile4db48.ts.net:8443` para las pruebas. Se añadió únicamente `https://saturno.taile4db48.ts.net:8443/sign-in` a `allowedRedirectUrls` de `security-hardening`, preservando las cuatro entradas existentes y sin modificar producción.
+- README documenta `NEXT_PUBLIC_APP_URL` como obligatoria y especifica el valor esperado de producción: `https://cestapp.insforge.site`.
+
+**Verificación realizada:** el OAuth de pruebas respondió `200` con el origen correcto tanto sin cabeceras especiales como con `Host`, `X-Forwarded-Host` y `X-Forwarded-Proto` falsificados. Un origen atacante acompañado de cabeceras falsificadas coincidentes recibió `403`, igual que una petición sin `Origin`. TypeScript, ESLint sin errores, `git diff --check` y el build normal de las 23 rutas finalizaron correctamente.
+
+**Pendiente de producción:** configurar `NEXT_PUBLIC_APP_URL=https://cestapp.insforge.site` en el despliegue, confirmar que `/sign-in` continúa en `allowedRedirectUrls` y repetir login, registro y OAuth. Cada preview o dominio alternativo necesita su propio build/origen explícito; no se aceptan hosts dinámicos por diseño.
 
 ## Observaciones adicionales de Android
 
@@ -442,6 +452,12 @@ La actualización de Next.js `16.3.0` de SEC-05 también permanece únicamente e
 
 La eliminación de Clerk de SEC-07 también permanece únicamente en la rama `android`; producción no ha sido modificada.
 
+El rate limiting de SEC-06 y las cabeceras/CSP de SEC-08 también son cambios locales. Deben desplegarse y verificarse en el dominio público antes de considerarlos activos.
+
+El endurecimiento OAuth de SEC-10 requiere tanto desplegar el frontend como publicar un APK nuevo para que el manifiesto y la validación Java lleguen a los dispositivos.
+
+El origen fijo de SEC-11 está configurado únicamente para `saturno` en `.env.local`. Producción necesita definir su propio `NEXT_PUBLIC_APP_URL` antes del build.
+
 Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque puede haber cambiado después de la fecha de este documento.
 
 ## Aspectos positivos observados
@@ -472,8 +488,11 @@ Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque pu
 - [x] Eliminar `@clerk/nextjs`. Resuelto y verificado en web y Android; pendiente de desplegar.
 - [ ] Actualizar InsForge SDK y Capacitor.
 - [x] Ejecutar nuevamente `pnpm audit --prod` y revisar los avisos restantes. Quedan 17 asociados a `@capacitor/cli` y `@insforge/sdk`.
-- [ ] Añadir rate limiting y validación de cuerpos a `/api/auth/*`.
-- [ ] Configurar cabeceras HTTP y una CSP compatible con la aplicación.
+- [x] Añadir rate limiting y validación de cuerpos a `/api/auth/*`. Resuelto y verificado en web y Android contra `security-hardening`; pendiente de desplegar.
+- [ ] Confirmar y configurar rate limiting en `POST /api/auth/sessions` de InsForge, o protegerlo mediante un control soportado por el proveedor. Se confirmó que la vía directa omite el límite local de cinco intentos.
+- [ ] Revisar la política de longitud de contraseña. Aplazado expresamente; no se añadió un mínimo en la aplicación y se conserva la configuración actual de InsForge.
+- [x] Configurar cabeceras HTTP y una CSP compatible con la aplicación. Resuelto y verificado localmente con navegador real; pendiente de desplegar y comprobar en producción.
+- [x] Fijar y validar el origen público de autenticación. Resuelto en código y probado frente a cabeceras proxy falsificadas; pendiente de configurar `NEXT_PUBLIC_APP_URL` en producción.
 
 ### Android
 
@@ -502,9 +521,11 @@ Una corrección de seguridad no debe considerarse terminada hasta demostrar como
 5. `anon` no puede leer, insertar, actualizar ni borrar ninguna partición de auditoría.
 6. Cada partición recién creada tiene RLS y sus políticas correctas.
 7. ✅ El refresh token de Android no aparece en `document.cookie`, `localStorage` ni `sessionStorage` en el nuevo APK (verificado en móvil real).
-8. Los endpoints de autenticación limitan intentos repetidos y rechazan cuerpos excesivos.
-9. El despliegue devuelve las cabeceras HTTP definidas sin romper OAuth, PWA ni Realtime.
-10. ✅ Lint, build de Next.js y build del APK siguen completándose correctamente tras SEC-05 y SEC-07.
+8. ⚠️ Los endpoints propios web y Android limitan intentos repetidos, devuelven `Retry-After` y rechazan cuerpos superiores a 16 KiB; queda pendiente cerrar o confirmar el límite del endpoint directo de InsForge.
+9. ⚠️ El build local devuelve las cabeceras, mantiene PWA y Realtime y bloquea fuentes no autorizadas; queda pendiente verificar OAuth y avatares después del despliegue en producción.
+10. ✅ Lint, build de Next.js y build del APK siguen completándose correctamente tras SEC-05, SEC-06, SEC-07, SEC-08 y SEC-10.
+11. ⚠️ El APK solo declara el callback OAuth esperado y el navegador nativo rechaza URLs ajenas; falta probar el flujo completo en dispositivo y migrar a un App Link verificado.
+12. ✅ Las cabeceras `Host` y `X-Forwarded-*` falsificadas no alteran el origen de auth; un `Origin` atacante continúa recibiendo `403`.
 
 ## Limitaciones de esta auditoría
 

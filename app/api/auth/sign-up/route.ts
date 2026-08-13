@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       email,
       password,
       name,
-      redirectTo: new URL('/sign-in', getRequestOrigin(request)).toString(),
+      redirectTo: new URL('/sign-in', getRequestOrigin()).toString(),
     })
 
     if (error) {

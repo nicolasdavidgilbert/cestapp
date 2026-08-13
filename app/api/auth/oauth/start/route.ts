@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const client = createServerClient()
     const { data, error } = await client.auth.signInWithOAuth({
       provider,
-      redirectTo: new URL('/sign-in', getRequestOrigin(request)).toString(),
+      redirectTo: new URL('/sign-in', getRequestOrigin()).toString(),
       skipBrowserRedirect: true,
     })
 
