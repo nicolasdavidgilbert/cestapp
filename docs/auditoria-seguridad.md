@@ -300,7 +300,7 @@ Aunque no participaba en la autenticación, la dependencia aumentaba la superfic
 ### SEC-08: cabeceras HTTP de seguridad incompletas
 
 **Severidad:** media  
-**Estado:** confirmado en el despliegue público
+**Estado:** ✅ resuelto y verificado localmente; pendiente de desplegar y confirmar en producción
 
 El despliegue envía HSTS, pero no se observaron las siguientes protecciones:
 
@@ -312,7 +312,26 @@ El despliegue envía HSTS, pero no se observaron las siguientes protecciones:
 
 **Impacto:** una futura vulnerabilidad XSS tendría mayor alcance; la aplicación puede cargarse dentro de un iframe y el navegador dispone de menos límites defensivos.
 
-**Corrección recomendada:** configurar las cabeceras en `next.config.ts`, empezando por una CSP compatible con Next.js, InsForge, OAuth, Realtime y las imágenes de perfil.
+**Resolución aplicada (13 de agosto de 2026):**
+
+- `next.config.ts` aplica las cabeceras a todas las rutas, incluidos documentos, recursos y API.
+- La CSP limita por defecto los recursos al mismo origen. `connect-src` autoriza únicamente la propia aplicación y los orígenes HTTPS/WebSocket derivados de `NEXT_PUBLIC_INSFORGE_URL`, conservando consultas y Realtime sin permitir conexiones arbitrarias.
+- `img-src` admite recursos propios, `data:`, `blob:`, el backend configurado y los hosts de avatar de Google y GitHub. Fuentes, manifiesto y workers quedan restringidos al mínimo utilizado por la aplicación.
+- Se bloquean plugins y contenido multimedia, iframes, inclusión de la aplicación dentro de marcos, cambios de URL base y envío de formularios a otros orígenes. En producción también se actualizan solicitudes inseguras a HTTPS.
+- `script-src` no permite `eval` en producción ni scripts de terceros. Se conserva temporalmente `'unsafe-inline'` para los bloques de hidratación que Next.js genera en las páginas estáticas, mientras `script-src-attr 'none'` impide manejadores inline como `onclick`. Una CSP con nonce exigiría renderizar todas las páginas dinámicamente y eliminaría la optimización estática actual; endurecer esta excepción queda como mejora futura separada.
+- Se añadieron `Permissions-Policy`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-Permitted-Cross-Domain-Policies: none` y HSTS de un año en producción.
+- La URL de InsForge se analiza como URL y debe ser HTTPS en builds de producción. Valores ausentes, con credenciales embebidas o con protocolos inseguros hacen fallar la configuración en vez de generar una CSP manipulable.
+
+**Verificación realizada:**
+
+- `pnpm build` normal, sin fixture de Google Fonts, compiló correctamente las 23 rutas y mantuvo estáticas las páginas que ya lo eran.
+- Por `https://saturno.taile4db48.ts.net:8443`, inicio, acceso, registro, dashboard, productos, manifiesto e icono PWA respondieron `200`. Las cabeceras completas aparecieron tanto en documentos como en respuestas de la API.
+- Chromium cargó e hidrató la pantalla de acceso, mantuvo sus estilos, alcanzó el login local (`401` esperado con credenciales sintéticas inexistentes) y abrió el WebSocket de InsForge.
+- La misma prueba confirmó que la CSP bloquea una conexión a un origen no autorizado, `eval` y un manejador `onclick` inyectado.
+- TypeScript, `git diff --check`, ESLint sin errores y el APK debug finalizaron correctamente. No se utilizó el teléfono; el único aviso de lint sigue siendo el previo y no relacionado de `ProfileForm.tsx`.
+- El contador sintético de autenticación se eliminó del backend de pruebas después de la prueba.
+
+**Pendiente de producción:** desplegar el frontend, comprobar las cabeceras en `https://cestapp.insforge.site` y repetir login, OAuth, carga de avatares, Realtime y funcionamiento como PWA instalada antes de dar por cerrado el despliegue.
 
 ### SEC-09: validación e integridad insuficientes
 

@@ -30,7 +30,7 @@ Cesta++ resuelve 3 cosas:
 - `/dashboard/profile` perfil de usuario
 
 ## Stack tecnico
-- Next.js `16.2.3` (App Router)
+- Next.js `16.3.0` (App Router)
 - React `19.2.4`
 - `@insforge/sdk` para auth, database y realtime
 - Tailwind CSS `4`
