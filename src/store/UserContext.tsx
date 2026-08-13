@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getInsforgeClient, replaceInsforgeClient } from '@/src/services/insforge'
 import type { RefreshResult, ThemePreference, User, UserContextType, UserProfile, UserProviderProps } from '@/src/types/auth'
+import type { NativeSessionResult } from '@/src/features/auth/types'
 import {
   ACCESS_TOKEN_COOKIE,
   ACCESS_TOKEN_MAX_AGE_SECONDS,
@@ -19,6 +20,17 @@ import {
 } from '@/src/features/auth/services/tokenStorage'
 import { isNativeCapacitorApp } from '@/src/features/auth/services/oauthService'
 import {
+  canUseSecureNativeSession,
+  clearNativeSecureSession,
+  exchangeOAuthCodeNative,
+  migrateLegacyNativeSession,
+  refreshNativeSessionSecurely,
+  signInNative,
+  signOutNative,
+  signUpNative,
+  verifyEmailNative,
+} from '@/src/features/auth/services/nativeSessionService'
+import {
   refreshSessionWeb,
   signInWeb,
   signOutWeb,
@@ -29,6 +41,14 @@ import {
 import { THEME_PREFERENCE_STORAGE_KEY, applyThemePreference, resolveThemePreference } from '@/src/features/auth/services/themePreference'
 
 const UserContext = createContext<UserContextType | null>(null)
+
+function getNativeErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return fallback
+}
 
 function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   return (
@@ -72,39 +92,49 @@ export function UserProvider({ children }: UserProviderProps) {
     setSessionUnavailable(false)
   }, [normalizeUser])
 
-  const persistNativeTokens = useCallback((accessToken?: string | null, refreshToken?: string | null) => {
+  const applySecureNativeSession = useCallback((session: NativeSessionResult) => {
+    replaceInsforgeClient(session.accessToken)
+    setUser(normalizeUser(session.user))
+    setSessionUnavailable(false)
+  }, [normalizeUser])
+
+  // Compatibility path for APKs installed before NativeSession existed.
+  // New APKs migrate these cookies natively and never execute this path.
+  const persistLegacyNativeTokens = useCallback((accessToken?: string | null, refreshToken?: string | null) => {
     const client = getInsforgeClient()
     if (accessToken) {
       writeCookie(ACCESS_TOKEN_COOKIE, accessToken, ACCESS_TOKEN_MAX_AGE_SECONDS)
       client.getHttpClient().setAuthToken(accessToken)
     }
-
     if (refreshToken) {
       writeCookie(REFRESH_TOKEN_COOKIE, refreshToken, REFRESH_TOKEN_MAX_AGE_SECONDS)
       client.getHttpClient().setRefreshToken(refreshToken)
     }
   }, [])
 
-  const hydrateNativeTokens = useCallback(() => {
+  const hydrateLegacyNativeTokens = useCallback(() => {
     const accessToken = readCookie(ACCESS_TOKEN_COOKIE)
     const refreshToken = readCookie(REFRESH_TOKEN_COOKIE)
     const client = getInsforgeClient()
-
     if (accessToken) client.getHttpClient().setAuthToken(accessToken)
     if (refreshToken) client.getHttpClient().setRefreshToken(refreshToken)
-
-    return { accessToken, refreshToken }
   }, [])
 
-  const clearNativeSession = useCallback(async () => {
+  const clearLegacyNativeSession = useCallback(async () => {
     await getInsforgeClient().auth.signOut()
     deleteCookie(ACCESS_TOKEN_COOKIE)
     deleteCookie(REFRESH_TOKEN_COOKIE)
+    replaceInsforgeClient()
   }, [])
 
   const handleRefreshFailure = useCallback(async () => {
     if (isNativeCapacitorApp()) {
-      await clearNativeSession()
+      if (canUseSecureNativeSession()) {
+        await clearNativeSecureSession().catch(() => undefined)
+        replaceInsforgeClient()
+      } else {
+        await clearLegacyNativeSession()
+      }
     } else {
       replaceInsforgeClient()
     }
@@ -116,46 +146,68 @@ export function UserProvider({ children }: UserProviderProps) {
       redirectedAfterRefreshFailureRef.current = true
       redirectToLogin()
     }
-  }, [clearNativeSession])
+  }, [clearLegacyNativeSession])
 
-  const refreshNativeSession = useCallback(async (): Promise<RefreshResult> => {
+  const refreshSecureNativeSession = useCallback(async (): Promise<RefreshResult> => {
     try {
-      const client = getInsforgeClient()
-      const { data: refreshResponse, error } = await client.auth.refreshSession()
-
-      if (error || !refreshResponse?.accessToken) {
-        if (isAuthSessionError(error)) {
-          await handleRefreshFailure()
-          return { ok: false, reason: 'auth' }
-        }
-        return { ok: false, reason: 'transient' }
+      const session = await refreshNativeSessionSecurely()
+      if (!session.accessToken || !session.user) {
+        await handleRefreshFailure()
+        return { ok: false, reason: 'auth' }
       }
 
-      persistNativeTokens(refreshResponse.accessToken, refreshResponse.refreshToken ?? readCookie(REFRESH_TOKEN_COOKIE))
-      if (refreshResponse.user) setUser(normalizeUser(refreshResponse.user))
+      applySecureNativeSession(session)
       return { ok: true }
     } catch (error) {
       if (isAuthSessionError(error)) {
         await handleRefreshFailure()
         return { ok: false, reason: 'auth' }
       }
+      setSessionUnavailable(true)
       return { ok: false, reason: 'transient' }
     }
-  }, [handleRefreshFailure, normalizeUser, persistNativeTokens])
+  }, [applySecureNativeSession, handleRefreshFailure])
+
+  const refreshLegacyNativeSession = useCallback(async (): Promise<RefreshResult> => {
+    try {
+      const client = getInsforgeClient()
+      const { data: refreshResponse, error } = await client.auth.refreshSession()
+      if (error || !refreshResponse?.accessToken) {
+        if (isAuthSessionError(error)) {
+          await handleRefreshFailure()
+          return { ok: false, reason: 'auth' }
+        }
+        setSessionUnavailable(true)
+        return { ok: false, reason: 'transient' }
+      }
+
+      persistLegacyNativeTokens(
+        refreshResponse.accessToken,
+        refreshResponse.refreshToken ?? readCookie(REFRESH_TOKEN_COOKIE),
+      )
+      if (refreshResponse.user) setUser(normalizeUser(refreshResponse.user))
+      setSessionUnavailable(false)
+      return { ok: true }
+    } catch (error) {
+      if (isAuthSessionError(error)) {
+        await handleRefreshFailure()
+        return { ok: false, reason: 'auth' }
+      }
+      setSessionUnavailable(true)
+      return { ok: false, reason: 'transient' }
+    }
+  }, [handleRefreshFailure, normalizeUser, persistLegacyNativeTokens])
 
   const refreshWebSession = useCallback(async (): Promise<RefreshResult> => {
     const result = await refreshSessionWeb()
-
     if (result.data) {
       applyWebSession(result.data)
       return { ok: true }
     }
-
     if (result.status === 401 || result.status === 403) {
       await handleRefreshFailure()
       return { ok: false, reason: 'auth' }
     }
-
     setSessionUnavailable(true)
     return { ok: false, reason: 'transient' }
   }, [applyWebSession, handleRefreshFailure])
@@ -163,14 +215,19 @@ export function UserProvider({ children }: UserProviderProps) {
   const refreshSession = useCallback((): Promise<RefreshResult> => {
     if (refreshPromiseRef.current) return refreshPromiseRef.current
 
-    const operation = (isNativeCapacitorApp() ? refreshNativeSession() : refreshWebSession())
-      .finally(() => {
-        refreshPromiseRef.current = null
-      })
+    const operation = (
+      isNativeCapacitorApp()
+        ? canUseSecureNativeSession()
+          ? refreshSecureNativeSession()
+          : refreshLegacyNativeSession()
+        : refreshWebSession()
+    ).finally(() => {
+      refreshPromiseRef.current = null
+    })
 
     refreshPromiseRef.current = operation
     return operation
-  }, [refreshNativeSession, refreshWebSession])
+  }, [refreshLegacyNativeSession, refreshSecureNativeSession, refreshWebSession])
 
   const checkUser = useCallback(async () => {
     redirectedAfterRefreshFailureRef.current = false
@@ -181,7 +238,18 @@ export function UserProvider({ children }: UserProviderProps) {
       return
     }
 
-    hydrateNativeTokens()
+    if (canUseSecureNativeSession()) {
+      try {
+        await migrateLegacyNativeSession()
+      } catch {
+        // A failed migration is followed by a normal secure-session check.
+      }
+      await refreshSession()
+      setLoading(false)
+      return
+    }
+
+    hydrateLegacyNativeTokens()
     const client = getInsforgeClient()
     const { data, error } = await client.auth.getCurrentUser()
 
@@ -192,20 +260,15 @@ export function UserProvider({ children }: UserProviderProps) {
     }
 
     if (error) {
-      const refreshed = await refreshSession()
-      if (!refreshed.ok && refreshed.reason === 'transient') {
-        const { data: retryData, error: retryError } = await client.auth.getCurrentUser()
-        if (!retryError && retryData?.user) setUser(normalizeUser(retryData.user))
-      }
+      await refreshSession()
     } else {
       setUser(null)
     }
-
     setLoading(false)
-  }, [hydrateNativeTokens, normalizeUser, refreshSession])
+  }, [hydrateLegacyNativeTokens, normalizeUser, refreshSession])
 
   useEffect(() => {
-    if (!isNativeCapacitorApp()) return
+    if (!isNativeCapacitorApp() || canUseSecureNativeSession()) return
 
     const httpClient = getInsforgeClient().getHttpClient() as {
       setAuthToken: (token: string | null) => void
@@ -219,7 +282,6 @@ export function UserProvider({ children }: UserProviderProps) {
       if (token) writeCookie(ACCESS_TOKEN_COOKIE, token, ACCESS_TOKEN_MAX_AGE_SECONDS)
       else deleteCookie(ACCESS_TOKEN_COOKIE)
     }
-
     httpClient.setRefreshToken = (token: string | null) => {
       originalSetRefreshToken(token)
       if (token) writeCookie(REFRESH_TOKEN_COOKIE, token, REFRESH_TOKEN_MAX_AGE_SECONDS)
@@ -263,10 +325,19 @@ export function UserProvider({ children }: UserProviderProps) {
 
   async function signIn(email: string, password: string) {
     if (isNativeCapacitorApp()) {
+      if (canUseSecureNativeSession()) {
+        try {
+          applySecureNativeSession(await signInNative(email, password))
+          return {}
+        } catch (error) {
+          return { error: getNativeErrorMessage(error, 'No se pudo iniciar sesión.') }
+        }
+      }
+
       const { data, error } = await getInsforgeClient().auth.signInWithPassword({ email, password })
       if (error) return { error: error.message }
       if (data?.user) {
-        persistNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
+        persistLegacyNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
         setUser(normalizeUser(data.user))
       }
       return {}
@@ -280,12 +351,25 @@ export function UserProvider({ children }: UserProviderProps) {
 
   async function signUp(email: string, password: string, name: string) {
     if (isNativeCapacitorApp()) {
+      if (canUseSecureNativeSession()) {
+        try {
+          const result = await signUpNative(email, password, name)
+          if (result.requireVerification) return { requireVerification: true }
+          if (result.accessToken && result.user) {
+            applySecureNativeSession({ accessToken: result.accessToken, user: result.user })
+          }
+          return {}
+        } catch (error) {
+          return { error: getNativeErrorMessage(error, 'No se pudo crear la cuenta.') }
+        }
+      }
+
       const redirectTo = new URL('/sign-in', getAppOrigin()).toString()
       const { data, error } = await getInsforgeClient().auth.signUp({ email, password, name, redirectTo })
       if (error) return { error: error.message }
       if (data?.requireEmailVerification) return { requireVerification: true }
       if (data?.user) {
-        persistNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
+        persistLegacyNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
         setUser(normalizeUser(data.user))
       }
       return {}
@@ -300,10 +384,19 @@ export function UserProvider({ children }: UserProviderProps) {
 
   async function verifyEmail(email: string, code: string) {
     if (isNativeCapacitorApp()) {
+      if (canUseSecureNativeSession()) {
+        try {
+          applySecureNativeSession(await verifyEmailNative(email, code))
+          return {}
+        } catch (error) {
+          return { error: getNativeErrorMessage(error, 'No se pudo verificar el correo.') }
+        }
+      }
+
       const { data, error } = await getInsforgeClient().auth.verifyEmail({ email, otp: code })
       if (error) return { error: error.message }
       if (data?.user) {
-        persistNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
+        persistLegacyNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
         setUser(normalizeUser(data.user))
       }
       return {}
@@ -312,6 +405,25 @@ export function UserProvider({ children }: UserProviderProps) {
     const result = await verifyEmailWeb(email, code)
     if (!result.data) return { error: result.error }
     applyWebSession(result.data)
+    return {}
+  }
+
+  async function completeNativeOAuth(code: string, codeVerifier: string) {
+    if (canUseSecureNativeSession()) {
+      try {
+        applySecureNativeSession(await exchangeOAuthCodeNative(code, codeVerifier))
+        return {}
+      } catch (error) {
+        return { error: getNativeErrorMessage(error, 'No se pudo completar OAuth.') }
+      }
+    }
+
+    const { data, error } = await getInsforgeClient().auth.exchangeOAuthCode(code, codeVerifier)
+    if (error) return { error: error.message }
+    if (data?.user) {
+      persistLegacyNativeTokens(data.accessToken ?? null, data.refreshToken ?? null)
+      setUser(normalizeUser(data.user))
+    }
     return {}
   }
 
@@ -357,7 +469,12 @@ export function UserProvider({ children }: UserProviderProps) {
 
   async function signOut() {
     if (isNativeCapacitorApp()) {
-      await clearNativeSession()
+      if (canUseSecureNativeSession()) {
+        await signOutNative().catch(() => clearNativeSecureSession())
+        replaceInsforgeClient()
+      } else {
+        await clearLegacyNativeSession()
+      }
     } else {
       await signOutWeb()
       replaceInsforgeClient()
@@ -388,6 +505,7 @@ export function UserProvider({ children }: UserProviderProps) {
         signUp,
         signOut,
         verifyEmail,
+        completeNativeOAuth,
         refreshUser,
         updateProfile,
         themePreference,

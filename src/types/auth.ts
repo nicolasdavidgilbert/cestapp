@@ -26,6 +26,7 @@ export type UserContextType = {
   signUp: (email: string, password: string, name: string) => Promise<{ error?: string; requireVerification?: boolean }>
   signOut: () => Promise<void>
   verifyEmail: (email: string, code: string) => Promise<{ error?: string }>
+  completeNativeOAuth: (code: string, codeVerifier: string) => Promise<{ error?: string }>
   refreshUser: () => Promise<void>
   updateProfile: (profile: Record<string, unknown>) => Promise<{ error?: string }>
   themePreference: ThemePreference
@@ -39,6 +40,7 @@ export type RefreshResult =
 export type ErrorLike = {
   statusCode?: unknown
   error?: unknown
+  code?: unknown
   message?: unknown
 }
 

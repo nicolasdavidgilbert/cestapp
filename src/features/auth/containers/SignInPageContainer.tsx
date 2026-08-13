@@ -14,7 +14,7 @@ import { OAUTH_CODE_VERIFIER_KEY, OAUTH_REDIRECT_PATH_KEY, canUseWebOAuth, close
 
 export default function SignInPage() {
   const router = useRouter()
-  const { signIn, refreshUser } = useUser()
+  const { signIn, completeNativeOAuth, refreshUser } = useUser()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -80,10 +80,16 @@ export default function SignInPage() {
       setError('')
       setLoading(true)
 
-      const { error: exchangeError } = await getInsforgeClient().auth.exchangeOAuthCode(oauthCode, codeVerifier ?? undefined)
+      if (!codeVerifier) {
+        setError('El intento OAuth ha caducado. Inténtalo de nuevo.')
+        setLoading(false)
+        processingOAuthRef.current = false
+        return
+      }
 
-      if (exchangeError) {
-        setError(exchangeError.message)
+      const result = await completeNativeOAuth(oauthCode, codeVerifier)
+      if (result.error) {
+        setError(result.error)
         setLoading(false)
         processingOAuthRef.current = false
         return
@@ -92,11 +98,10 @@ export default function SignInPage() {
       sessionStorage.removeItem(OAUTH_REDIRECT_PATH_KEY)
       sessionStorage.removeItem(OAUTH_CODE_VERIFIER_KEY)
       localStorage.removeItem(OAUTH_CODE_VERIFIER_KEY)
-      await refreshUser()
       void closeOAuthBrowser()
       router.replace(nextRedirect)
     },
-    [redirectPath, refreshUser, router]
+    [completeNativeOAuth, redirectPath, router]
   )
 
   useEffect(() => {

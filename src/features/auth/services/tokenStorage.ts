@@ -67,6 +67,7 @@ export function isAuthSessionError(error: unknown) {
   const details = (error ?? {}) as ErrorLike
   const statusCode = typeof details.statusCode === 'number' ? details.statusCode : null
   const errorCode = typeof details.error === 'string' ? details.error.toUpperCase() : ''
+  const nativeCode = typeof details.code === 'string' ? details.code.toUpperCase() : ''
   const errorMessage = (() => {
     if (typeof details.message === 'string') return details.message.toLowerCase()
     if (error instanceof Error && typeof error.message === 'string') return error.message.toLowerCase()
@@ -74,6 +75,8 @@ export function isAuthSessionError(error: unknown) {
   })()
 
   if (statusCode === 401 || statusCode === 403) return true
+  if (nativeCode === 'NO_SESSION' || nativeCode === 'INVALID_SESSION') return true
+  if (nativeCode === 'HTTP_401' || nativeCode === 'HTTP_403') return true
   if (errorCode === 'INVALID_TOKEN' || errorCode === 'UNAUTHORIZED' || errorCode === 'TOKEN_EXPIRED') return true
   if (errorMessage.includes('sesión no válida') || errorMessage.includes('session invalid')) return true
   if (errorMessage.includes('unauthorized') || errorMessage.includes('invalid token')) return true

@@ -163,7 +163,7 @@ Conociendo el UUID de una lista o el identificador de un usuario, otra persona p
 ### SEC-04: refresh token de Android accesible desde JavaScript
 
 **Severidad:** alta  
-**Estado:** confirmado en el código
+**Estado:** ✅ resuelto y verificado en una variante Android de prueba; pendiente de desplegar las rutas nativas y publicar el APK actualizado
 
 La aplicación nativa guarda los tokens de acceso y renovación mediante `document.cookie`. Estas cookies no pueden ser `HttpOnly` porque las escribe y lee JavaScript.
 
@@ -173,9 +173,10 @@ El manifiesto también contiene `android:allowBackup="true"`, lo que aumenta el 
 
 **Evidencias:**
 
-- `src/store/UserContext.tsx`, funciones de persistencia e hidratación nativas.
-- `src/features/auth/services/tokenStorage.ts`, `writeCookie` y `readCookie`.
-- `android/app/src/main/AndroidManifest.xml`, atributo `allowBackup`.
+- `android/app/src/main/java/site/insforge/cestapp/NativeSessionPlugin.java`, almacenamiento cifrado y operaciones de sesión fuera de JavaScript.
+- `src/features/auth/services/nativeSessionService.ts` y `src/store/UserContext.tsx`, selección del flujo nativo seguro.
+- `app/api/auth/native/*` y `src/services/nativeAuth.ts`, intercambio y renovación de sesión desde el código nativo.
+- `android/app/src/main/AndroidManifest.xml` y las reglas XML de backup.
 
 **Corrección recomendada:**
 
@@ -183,6 +184,28 @@ El manifiesto también contiene `android:allowBackup="true"`, lo que aumenta el 
 - Mantener el access token solo en memoria cuando sea posible.
 - Desactivar backups o definir reglas que excluyan expresamente todo almacenamiento de autenticación.
 - Borrar el almacenamiento seguro al cerrar sesión o invalidarse la sesión.
+
+**Resolución aplicada (13 de agosto de 2026):**
+
+- Se añadió el plugin Capacitor `NativeSession`. El refresh token se cifra con AES-256-GCM y una clave no exportable almacenada en Android Keystore; el texto en claro solo existe temporalmente dentro del proceso nativo cuando se usa.
+- El plugin realiza el login, registro, verificación, canje OAuth, renovación y cierre de sesión contra rutas Next.js exclusivas para el cliente nativo. El puente hacia JavaScript devuelve únicamente el usuario y el access token, nunca el refresh token.
+- El access token se mantiene en memoria en el WebView. La web y la PWA conservan su flujo independiente mediante cookies `HttpOnly`, por lo que el cambio no sustituye ni debilita su sesión.
+- Las rutas `/api/auth/native/*` limitan el cuerpo a 16 KiB, desactivan el almacenamiento en caché y rechazan solicitudes que presenten contexto de navegador. InsForge sigue validando credenciales y emitiendo los tokens; estas rutas actúan como intermediario de confianza para que el refresh token llegue directamente al plugin nativo.
+- Al actualizar desde una versión anterior, el plugin migra la cookie antigua directamente desde `CookieManager` al almacén cifrado y elimina las cookies de autenticación heredadas sin exponerlas a JavaScript.
+- El cierre de sesión y los errores de clave o datos cifrados eliminan el estado local seguro. El manifiesto usa `android:allowBackup="false"` y reglas de extracción que excluyen expresamente el almacén de sesión.
+- Se mantiene temporalmente un flujo de compatibilidad para APK antiguos que todavía no incluyen el plugin. Las versiones antiguas continúan teniendo el riesgo original hasta que los usuarios actualicen; este fallback deberá retirarse después de una adopción razonable del nuevo APK.
+
+**Verificación realizada:**
+
+- TypeScript, ESLint dirigido, build de Next.js, sincronización de Capacitor, lint de Android y compilación del APK finalizaron correctamente.
+- Se instaló una variante con identificador separado en un móvil Android real, sin reemplazar la aplicación normal. La variante cargó el frontend local por HTTPS mediante `https://saturno.taile4db48.ts.net:8443`, apuntando al puerto 3100, y usó el backend de pruebas `security-hardening`.
+- Tras iniciar sesión, el almacén privado contenía únicamente el ciphertext y el IV; no aparecieron cookies de autenticación ni la clave antigua en `localStorage` o `sessionStorage`.
+- Después de forzar la detención y arrancar en frío, la aplicación recuperó la sesión y abrió `/dashboard`.
+- Después de cerrar sesión, abrió `/sign-in`, desaparecieron ciphertext e IV y un nuevo arranque continuó desconectado.
+- La migración se probó con un valor sintético: se creó el almacenamiento cifrado, se retiró la cookie antigua y después se eliminó por completo el dato de prueba.
+- Las rutas nativas devolvieron `403` sin la identificación nativa o al simular un origen de navegador, y `400` ante un cuerpo nativo inválido.
+
+**Pendiente para producción:** desplegar primero las rutas Next.js, comprobarlas en `https://cestapp.insforge.site`, publicar el APK actualizado y vigilar la adopción antes de eliminar el fallback para versiones antiguas.
 
 ### SEC-05: versión vulnerable de Next.js
 
@@ -330,6 +353,8 @@ GET https://cestapp.insforge.site/api/auth/refresh → 404
 
 La corrección de persistencia de sesión de iPhone existe como cambio local sin confirmar en la rama `android`, pero todavía no está activa en `cestapp.insforge.site`.
 
+Las rutas `/api/auth/native/*` de SEC-04 también son cambios locales. Deben desplegarse antes de distribuir el APK que depende de ellas.
+
 Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque puede haber cambiado después de la fecha de este documento.
 
 ## Aspectos positivos observados
@@ -365,8 +390,8 @@ Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque pu
 
 ### Android
 
-- [ ] Migrar el refresh token a almacenamiento seguro respaldado por Android Keystore.
-- [ ] Excluir datos de autenticación de backups o desactivar `allowBackup`.
+- [x] Migrar el refresh token a almacenamiento seguro respaldado por Android Keystore. Resuelto y verificado en un móvil real; pendiente de publicar el APK.
+- [x] Excluir datos de autenticación de backups o desactivar `allowBackup`. Resuelto con ambas defensas y verificado en el manifiesto generado.
 - [ ] Restringir el deep link al callback OAuth exacto.
 - [ ] Restringir `NativeBrowserPlugin` a URLs HTTPS autorizadas.
 - [ ] Reducir el ámbito de `FileProvider`.
@@ -389,7 +414,7 @@ Una corrección de seguridad no debe considerarse terminada hasta demostrar como
 4. Un usuario no puede leer ni publicar en canales Realtime de otra lista o cuenta.
 5. `anon` no puede leer, insertar, actualizar ni borrar ninguna partición de auditoría.
 6. Cada partición recién creada tiene RLS y sus políticas correctas.
-7. El refresh token de Android no aparece en `document.cookie`, `localStorage` ni `sessionStorage`.
+7. ✅ El refresh token de Android no aparece en `document.cookie`, `localStorage` ni `sessionStorage` en el nuevo APK (verificado en móvil real).
 8. Los endpoints de autenticación limitan intentos repetidos y rechazan cuerpos excesivos.
 9. El despliegue devuelve las cabeceras HTTP definidas sin romper OAuth, PWA ni Realtime.
 10. Lint, build de Next.js y build del APK siguen completándose correctamente.
@@ -402,4 +427,3 @@ Una corrección de seguridad no debe considerarse terminada hasta demostrar como
 - El asesor automático de seguridad de InsForge no pudo consultarse porque el CLI solicitó renovar su sesión; las consultas SQL de metadatos y políticas sí funcionaron.
 - No se realizó análisis dinámico del APK en un dispositivo rooteado ni interceptación TLS.
 - Una auditoría adicional debe repetir las comprobaciones después de aplicar las correcciones y antes de publicar.
-

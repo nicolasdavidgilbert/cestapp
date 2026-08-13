@@ -29,6 +29,26 @@ export type NativeBrowserOpenOptions = {
   url: string
 }
 
+export type NativeSessionResult = {
+  accessToken: string
+  user: unknown
+}
+
+export type NativeSignUpResult = Partial<NativeSessionResult> & {
+  requireVerification?: boolean
+}
+
+export type NativeSessionPlugin = {
+  migrateLegacySession: () => Promise<{ migrated: boolean }>
+  signIn: (options: { email: string; password: string }) => Promise<NativeSessionResult>
+  signUp: (options: { email: string; password: string; name: string }) => Promise<NativeSignUpResult>
+  verifyEmail: (options: { email: string; code: string }) => Promise<NativeSessionResult>
+  exchangeOAuthCode: (options: { code: string; codeVerifier: string }) => Promise<NativeSessionResult>
+  refreshSession: () => Promise<NativeSessionResult>
+  signOut: () => Promise<void>
+  clearSession: () => Promise<void>
+}
+
 export type CapacitorWindow = Window & {
   Capacitor?: { isNativePlatform?: () => boolean }
 }
