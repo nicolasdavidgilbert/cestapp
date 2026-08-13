@@ -68,10 +68,13 @@ export default function SignInPage() {
         incomingUrl.searchParams.get('redirect') ?? sessionStorage.getItem(OAUTH_REDIRECT_PATH_KEY) ?? redirectPath
       )
 
-      if (!oauthCode) {
-        if (callbackError) {
-          setError(callbackError)
-        }
+      if (!oauthCode || oauthCode.length > 4096) {
+        setError(
+          callbackError
+            ? callbackError.slice(0, 300)
+            : 'La respuesta OAuth no es válida. Inténtalo de nuevo.'
+        )
+        setLoading(false)
         void closeOAuthBrowser()
         return
       }

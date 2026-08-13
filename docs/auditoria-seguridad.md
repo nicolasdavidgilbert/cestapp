@@ -351,17 +351,26 @@ Tampoco se observaron cuotas por usuario para listas, productos, enlaces de invi
 ### SEC-10: esquema OAuth de Android no verificado
 
 **Severidad:** media  
-**Estado:** confirmado
+**Estado:** ⚠️ superficie reducida y verificada en el APK debug; el esquema personalizado sigue sin poder verificarse criptográficamente y falta una prueba OAuth en dispositivo
 
 Android utiliza el esquema personalizado `site.insforge.cestapp://`. Otra aplicación puede registrar el mismo esquema. Además, existe un segundo filtro que acepta cualquier ruta del esquema y amplía innecesariamente la superficie de deep links.
 
 PKCE dificulta que otra aplicación canjee el código sin el verificador, pero no evita la interceptación, interferencia o bloqueo del flujo.
 
-**Corrección recomendada:**
+**Resolución aplicada (13 de agosto de 2026):**
 
-- Eliminar el filtro genérico y aceptar exclusivamente `oauth-callback`.
-- Preferir Android App Links HTTPS verificados cuando el proveedor lo permita.
-- Mantener PKCE y comprobar esquema, host, ruta, parámetros y estado del intento.
+- Se eliminó del manifiesto el segundo filtro que aceptaba cualquier URI `site.insforge.cestapp://`. El APK generado conserva un único filtro `VIEW` con esquema `site.insforge.cestapp` y host `oauth-callback`.
+- La aplicación exige además que el callback tenga protocolo y host exactos, ruta vacía o `/`, y que no incluya usuario, contraseña, puerto ni fragmento. Ya no acepta variantes como un host ajeno con ruta `/oauth-callback`.
+- Los códigos OAuth superiores a 4.096 caracteres se rechazan antes del intercambio y los mensajes de error procedentes del callback se limitan a 300 caracteres.
+- Se consultó el desafío OAuth de Google del backend de pruebas sin completar ningún login. InsForge devolvió `https://accounts.google.com/o/oauth2/v2/auth`.
+- Antes de abrir el navegador, TypeScript valida ese protocolo, host y ruta exactos. `NativeBrowserPlugin` repite la misma validación en Java, por lo que una llamada directa al bridge nativo tampoco puede abrir esquemas, hosts o rutas arbitrarios. Solo se admite el puerto HTTPS estándar y se rechazan credenciales o fragmentos embebidos.
+- PKCE se mantiene y el código continúa canjeándose mediante la ruta nativa protegida, sin exponer el refresh token al WebView.
+
+**Verificación realizada:** TypeScript, ESLint sin errores, `git diff --check`, `pnpm build` normal con las 23 rutas y el APK debug finalizaron correctamente. El manifiesto empaquetado se inspeccionó y contiene solo el filtro con host `oauth-callback`. No se utilizó el teléfono, por petición del usuario.
+
+**Riesgo residual:** cualquier aplicación Android puede intentar registrar el mismo esquema personalizado. PKCE evita que canjee el código sin el verificador, pero no impide interceptar o bloquear la redirección. La solución completa sigue siendo migrar a un Android App Link HTTPS con `assetlinks.json` y certificado de firma verificado cuando InsForge permita registrar ese callback.
+
+**Pendiente de publicación:** desplegar el frontend que valida las URLs, generar el APK actualizado y completar una prueba real de OAuth antes de publicarlo. Hasta entonces, la versión instalada conserva su manifiesto anterior.
 
 ### SEC-11: origen de OAuth basado en cabeceras del proxy
 
@@ -377,7 +386,7 @@ Las URLs permitidas actualmente en InsForge limitan el impacto, pero el código 
 ## Observaciones adicionales de Android
 
 - `FileProvider` no está exportado, lo cual es positivo, pero `external-path path="."` concede un ámbito excesivamente amplio si alguna función entrega permisos URI en el futuro.
-- `NativeBrowserPlugin` acepta cualquier URI con esquema. Conviene limitarlo a `https` y, si es necesario, a hosts OAuth conocidos.
+- ✅ `NativeBrowserPlugin` está restringido en TypeScript y Java a la URL HTTPS autorizada de Google OAuth. Cualquier ampliación futura de proveedores deberá añadir explícitamente su host y ruta.
 - La build release tiene `minifyEnabled false`; esto no constituye por sí solo una vulnerabilidad, pero facilita el análisis del APK y debe asumirse que ningún secreto puede protegerse mediante ofuscación.
 - El `anon key` de InsForge es público por diseño. La protección real debe depender siempre de RLS y de la autorización de las funciones RPC.
 
@@ -470,8 +479,8 @@ Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque pu
 
 - [x] Migrar el refresh token a almacenamiento seguro respaldado por Android Keystore. Resuelto y verificado en un móvil real; pendiente de publicar el APK.
 - [x] Excluir datos de autenticación de backups o desactivar `allowBackup`. Resuelto con ambas defensas y verificado en el manifiesto generado.
-- [ ] Restringir el deep link al callback OAuth exacto.
-- [ ] Restringir `NativeBrowserPlugin` a URLs HTTPS autorizadas.
+- [x] Restringir el deep link al callback OAuth exacto. Eliminado el filtro genérico y verificado el manifiesto del APK debug; queda migrar a App Links para eliminar el riesgo del esquema compartido.
+- [x] Restringir `NativeBrowserPlugin` a URLs HTTPS autorizadas. Google OAuth se valida tanto en TypeScript como en Java.
 - [ ] Reducir el ámbito de `FileProvider`.
 
 ### Integridad y mantenimiento
