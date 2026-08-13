@@ -266,13 +266,20 @@ Las rutas locales de login, registro, verificación y OAuth no implementan un l�
 ### SEC-07: Clerk vulnerable instalado pero sin utilizar
 
 **Severidad:** media como riesgo actual; el aviso del paquete es crítico  
-**Estado:** confirmado
+**Estado:** ✅ resuelto y verificado localmente; pendiente de desplegar en producción
 
-`@clerk/nextjs` está instalado en la versión `7.1.0`, afectada por un bypass de protección basado en Middleware. No se encontraron importaciones ni uso de Clerk en el proyecto, por lo que el bypass concreto no parece alcanzable.
+`@clerk/nextjs` estaba instalado en la versión `7.1.0`, afectada por un bypass de protección basado en Middleware. No se encontraron importaciones ni uso de Clerk en el proyecto, por lo que el bypass concreto no parecía alcanzable.
 
-La dependencia sigue aumentando la superficie de suministro y arrastra otros paquetes vulnerables.
+Aunque no participaba en la autenticación, la dependencia aumentaba la superficie de suministro y arrastraba otros paquetes vulnerables.
 
-**Corrección recomendada:** eliminar `@clerk/nextjs` del proyecto y regenerar el lockfile.
+**Resolución aplicada el 13 de agosto de 2026:**
+
+- Se eliminó `@clerk/nextjs` de `package.json` y se regeneró `pnpm-lock.yaml`.
+- La eliminación retiró 13 paquetes en total: Clerk y sus 12 dependencias transitivas, incluidas `@clerk/backend`, `@clerk/react`, `@clerk/shared` y `js-cookie`.
+- Se confirmó que no existen importaciones, proveedores, middleware ni configuración de Clerk. La autenticación continúa utilizando exclusivamente InsForge y las rutas locales `/api/auth/*`.
+- `pnpm audit --prod` bajó de 24 a 17 avisos: desaparecieron 2 críticos y 5 altos, sin avisos restantes asociados a Clerk o `js-cookie`.
+
+**Verificación realizada:** instalación con lockfile congelado, TypeScript, lint sin errores, build de las 23 rutas de Next.js, smoke test web y de las protecciones de autenticación mediante HTTPS en `saturno`, y build del APK de depuración. El único aviso de lint es uno preexistente y no relacionado en `ProfileForm.tsx`.
 
 ### SEC-08: cabeceras HTTP de seguridad incompletas
 
@@ -361,10 +368,17 @@ Después de resolver SEC-05:
 0 bajas · 6 moderadas · 15 altas · 3 críticas
 ```
 
+Después de resolver SEC-07:
+
+```text
+17 vulnerabilidades
+0 bajas · 6 moderadas · 10 altas · 1 crítica
+```
+
 Este total necesita interpretación:
 
 - Los avisos asociados a Next, PostCSS, Nanoid y Babel se corrigieron en SEC-05.
-- Clerk no se usa y debe eliminarse.
+- Clerk y sus dependencias transitivas no utilizadas se eliminaron en SEC-07.
 - Varias incidencias de `tar`, `xmldom` y `brace-expansion` proceden de `@capacitor/cli`; afectan principalmente al proceso de compilación, no al APK ejecutándose. `@capacitor/cli` debería actualizarse y residir en `devDependencies`.
 - `ws` y `socket.io-parser` llegan mediante `@insforge/sdk`; conviene actualizar el SDK cuando publique una cadena corregida.
 
@@ -381,6 +395,8 @@ La corrección de persistencia de sesión de iPhone existe como cambio local sin
 Las rutas `/api/auth/native/*` de SEC-04 también son cambios locales. Deben desplegarse antes de distribuir el APK que depende de ellas.
 
 La actualización de Next.js `16.3.0` de SEC-05 también permanece únicamente en la rama `android` y aún no protege el despliegue público.
+
+La eliminación de Clerk de SEC-07 también permanece únicamente en la rama `android`; producción no ha sido modificada.
 
 Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque puede haber cambiado después de la fecha de este documento.
 
@@ -409,9 +425,9 @@ Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque pu
 ### Antes del próximo despliegue
 
 - [x] Actualizar Next.js y `eslint-config-next` a una versión corregida compatible. Resuelto con `16.3.0` y verificado en web y Android.
-- [ ] Eliminar `@clerk/nextjs`.
+- [x] Eliminar `@clerk/nextjs`. Resuelto y verificado en web y Android; pendiente de desplegar.
 - [ ] Actualizar InsForge SDK y Capacitor.
-- [ ] Ejecutar nuevamente `pnpm audit --prod` y revisar los avisos restantes.
+- [x] Ejecutar nuevamente `pnpm audit --prod` y revisar los avisos restantes. Quedan 17 asociados a `@capacitor/cli` y `@insforge/sdk`.
 - [ ] Añadir rate limiting y validación de cuerpos a `/api/auth/*`.
 - [ ] Configurar cabeceras HTTP y una CSP compatible con la aplicación.
 
@@ -444,7 +460,7 @@ Una corrección de seguridad no debe considerarse terminada hasta demostrar como
 7. ✅ El refresh token de Android no aparece en `document.cookie`, `localStorage` ni `sessionStorage` en el nuevo APK (verificado en móvil real).
 8. Los endpoints de autenticación limitan intentos repetidos y rechazan cuerpos excesivos.
 9. El despliegue devuelve las cabeceras HTTP definidas sin romper OAuth, PWA ni Realtime.
-10. ✅ Lint, build de Next.js y build del APK siguen completándose correctamente tras SEC-05.
+10. ✅ Lint, build de Next.js y build del APK siguen completándose correctamente tras SEC-05 y SEC-07.
 
 ## Limitaciones de esta auditoría
 
