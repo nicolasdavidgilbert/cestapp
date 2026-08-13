@@ -3,7 +3,6 @@ import 'server-only'
 import type { User } from '@/src/types/auth'
 import { getErrorMessage, getErrorStatus } from '@/src/services/auth'
 
-const MAX_NATIVE_AUTH_BODY_BYTES = 16 * 1024
 const NATIVE_AUTH_HEADER = 'x-cestapp-native'
 const NATIVE_AUTH_HEADER_VALUE = 'android-v1'
 
@@ -20,23 +19,6 @@ export function isNativeAuthRequest(request: Request) {
     !request.headers.has('sec-fetch-site') &&
     !request.headers.has('sec-fetch-mode')
   )
-}
-
-export async function readNativeAuthBody(request: Request): Promise<Record<string, unknown> | null> {
-  const declaredLength = Number(request.headers.get('content-length') ?? '0')
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_NATIVE_AUTH_BODY_BYTES) return null
-
-  const rawBody = await request.text()
-  if (!rawBody || new TextEncoder().encode(rawBody).byteLength > MAX_NATIVE_AUTH_BODY_BYTES) return null
-
-  try {
-    const parsed = JSON.parse(rawBody) as unknown
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null
-  } catch {
-    return null
-  }
 }
 
 export function toNativeAuthSession(data: unknown): NativeAuthSession | null {

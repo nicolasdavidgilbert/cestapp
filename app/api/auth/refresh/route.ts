@@ -8,11 +8,25 @@ import {
   setAuthCookies,
   toServerAuthSession,
 } from '@/src/services/auth'
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  consumeIpRateLimit,
+  readAuthJsonBody,
+} from '@/src/services/authSecurity'
 
 export async function POST(request: Request) {
   if (!isTrustedAuthRequest(request)) {
     return Response.json({ error: 'Origen de solicitud no permitido.' }, { status: 403 })
   }
+
+  const bodyResult = await readAuthJsonBody(request)
+  if (!bodyResult.ok) {
+    return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
+  }
+
+  const ipLimit = await consumeIpRateLimit(request, AUTH_RATE_LIMITS.refreshIp)
+  if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
 
   const { accessToken, refreshToken } = await getAuthCookies()
 

@@ -245,21 +245,37 @@ Algunos avisos de bypass de Middleware no son alcanzables actualmente porque el 
 ### SEC-06: autenticación expuesta a fuerza bruta y abuso
 
 **Severidad:** alta  
-**Estado:** confirmado parcialmente; deben verificarse también los límites internos de InsForge
+**Estado:** ⚠️ mitigado y verificado en las rutas propias web/Android de `security-hardening`; el endpoint directo administrado por InsForge mantiene una vía de bypass pendiente; política de contraseña aplazada por decisión del proyecto
 
 La configuración de InsForge exige una contraseña mínima de seis caracteres y no requiere números, mayúsculas, minúsculas ni caracteres especiales.
 
-Las rutas locales de login, registro, verificación y OAuth no implementan un límite de intentos, retrasos progresivos ni cuotas por IP/cuenta. InsForge puede disponer de protecciones internas, pero la aplicación no debe depender de ellas sin verificar sus valores.
+Antes de la corrección, las rutas locales de login, registro, verificación y OAuth no implementaban un límite de intentos, retrasos progresivos ni cuotas por IP/cuenta. InsForge puede disponer de protecciones internas, pero no se encontró documentación de sus valores y la aplicación no debe depender únicamente de límites desconocidos.
 
 **Impacto:** credential stuffing, intentos repetidos contra contraseñas débiles, abuso de códigos de verificación y consumo de recursos.
 
-**Corrección recomendada:**
+**Resolución aplicada (13 de agosto de 2026):**
 
-- Elevar la longitud mínima de contraseña; priorizar longitud sobre reglas complejas rígidas.
-- Aplicar rate limiting por IP y por identificador normalizado.
-- Añadir retrasos progresivos y límites específicos a los códigos de verificación.
-- Devolver mensajes de login uniformes para no facilitar enumeración de cuentas.
-- Registrar los bloqueos sin guardar contraseñas, tokens ni códigos.
+- Todas las rutas web y Android bajo `/api/auth/*` leen ahora JSON de forma incremental, exigen `Content-Type: application/json` y rechazan cuerpos superiores a 16 KiB antes de deserializarlos.
+- Se añadió un limitador distribuido en PostgreSQL mediante `sql/add-auth-rate-limiting.sql`, compartido por todas las instancias de Next.js. La protección falla de forma cerrada con `503` si el limitador no está disponible.
+- El login permite 20 solicitudes por IP cada 10 minutos y bloquea progresivamente un identificador después de cinco fallos en 30 minutos. Registro, códigos de verificación, inicio/intercambio OAuth y renovación de sesión tienen cuotas independientes acordes a su uso.
+- Los fallos de credenciales `4xx` aumentan el contador; los errores internos `5xx` de InsForge no penalizan al usuario. Un login o una verificación correctos eliminan los fallos del identificador.
+- Los mensajes de login son uniformes para correo inexistente, contraseña incorrecta y correo sin verificar, reduciendo la enumeración de cuentas.
+- La base solo conserva el ámbito, contadores y claves seudonimizadas con HMAC-SHA-256. No almacena correos, IP, contraseñas, tokens ni códigos. Las tablas tienen RLS, carecen de permisos para `anon` y `authenticated`, y eliminan de forma muestreada registros inactivos de más de siete días.
+- El secreto del limitador permanece únicamente en la variable de servidor `AUTH_RATE_LIMIT_SECRET`; PostgreSQL guarda solo su resumen SHA-256. El secreto del entorno de pruebas se rotó durante la verificación y producción deberá generar uno distinto.
+
+**Decisión sobre contraseñas:** a petición del proyecto no se añadió ninguna longitud mínima en la aplicación ni se modificó la configuración administrada de InsForge. Se conserva por ahora el mínimo existente de seis caracteres. Este riesgo residual queda aceptado temporalmente y debe revisarse por separado; no afecta al funcionamiento del nuevo control de intentos.
+
+**Limitación residual confirmada:** InsForge publica `POST /api/auth/sessions` en el host del backend y su documentación permite llamarlo directamente, sin pasar por `/api/auth/sign-in`. Se enviaron seis credenciales inválidas consecutivas para una cuenta sintética inexistente contra `security-hardening`: los seis intentos devolvieron `401`, mientras que el gateway propio bloquea desde el quinto con `429`. Esto no demuestra que InsForge carezca de cualquier límite a umbrales superiores, pero sí demuestra que el control de la aplicación puede omitirse y que no existe un límite equivalente al configurado aquí. Como el endpoint pertenece al servicio gestionado, cerrar esta vía requiere una función soportada por InsForge, una regla de gateway/WAF delante de ese endpoint o cambiar de arquitectura/proveedor; no puede solucionarse únicamente desde estas rutas Next.js.
+
+**Verificación realizada:**
+
+- Por HTTPS en `saturno`, tanto web como Android devolvieron `401` uniforme en los cuatro primeros intentos inválidos y `429` en el quinto y posteriores. El bloqueo incluyó `Retry-After`, `Cache-Control: no-store`, `Pragma: no-cache` y `X-Content-Type-Options: nosniff`.
+- Las rutas web rechazaron solicitudes sin un origen permitido (`403`), contenido no JSON (`415`), JSON inválido (`400`) y un cuerpo de 17.000 bytes (`413`). Las rutas Android rechazaron clientes sin su marcador nativo (`403`), contextos con `Origin` de navegador (`403`) y JSON inválido (`400`).
+- Inicio, pantalla de acceso y manifiesto PWA siguieron respondiendo `200` mediante `https://saturno.taile4db48.ts.net:8443`, sin cambiar ninguna otra ruta de Tailscale.
+- TypeScript, `git diff --check`, ESLint sin errores, build de producción de las 23 rutas de Next.js y build del APK debug finalizaron correctamente. Persiste únicamente el aviso de lint previo y no relacionado de `ProfileForm.tsx`.
+- Los contadores sintéticos del limitador propio se eliminaron del backend de pruebas al terminar. Los intentos directos solo usaron un correo inexistente y no crearon usuarios ni datos funcionales.
+
+**Pendiente de producción:** solicitar a InsForge el límite efectivo y una forma soportada de configurarlo o restringir el endpoint directo. Además, desplegar las rutas Next.js, aplicar `sql/add-auth-rate-limiting.sql`, configurar un `AUTH_RATE_LIMIT_SECRET` nuevo y exclusivo del entorno y guardar únicamente su SHA-256 en `app_security.auth_rate_limit_config`. Después deben repetirse las pruebas de login correcto, bloqueo, recuperación y bypass directo antes de publicar el frontend o un APK que dependa de estas rutas.
 
 ## Hallazgos medios
 

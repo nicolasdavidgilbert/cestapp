@@ -60,9 +60,10 @@ Crea `.env.local`:
 ```bash
 NEXT_PUBLIC_INSFORGE_URL=https://<tu-app>.insforge.app
 NEXT_PUBLIC_INSFORGE_ANON_KEY=<tu-anon-key>
+AUTH_RATE_LIMIT_SECRET=<secreto-aleatorio-de-al-menos-32-caracteres>
 ```
 
-Opcionales recomendadas para redirects absolutos de auth:
+`AUTH_RATE_LIMIT_SECRET` es una variable exclusiva del servidor y debe ser distinta en cada entorno. La migración `sql/add-auth-rate-limiting.sql` guarda en PostgreSQL únicamente su resumen SHA-256; nunca publiques el secreto ni lo prefijes con `NEXT_PUBLIC_`. Este limitador protege las rutas propias `/api/auth/*`, pero no sustituye los controles que InsForge debe aplicar a su endpoint de autenticación directo.
 
 ```bash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -117,6 +118,7 @@ Scripts disponibles en `sql/`:
 - `list-sharing-realtime.sql` setup principal de comparticion + realtime + auditoria base
 - `fix-products-rls.sql` hardening de RLS en productos/precios
 - `improve-activity-audit.sql` mejora de auditoria (particiones, indices, mantenimiento)
+- `add-auth-rate-limiting.sql` limita de forma distribuida los intentos de autenticacion
 
 Ejemplo de ejecucion:
 

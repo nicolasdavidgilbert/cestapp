@@ -7,6 +7,13 @@ import {
   setAuthCookies,
   toServerAuthSession,
 } from '@/src/services/auth'
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  consumeIdentityRateLimit,
+  consumeIpRateLimit,
+  readAuthJsonBody,
+} from '@/src/services/authSecurity'
 
 export async function POST(request: Request) {
   if (!isTrustedAuthRequest(request)) {
@@ -14,14 +21,30 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { email?: unknown; password?: unknown; name?: unknown }
+    const bodyResult = await readAuthJsonBody(request)
+    if (!bodyResult.ok) {
+      return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
+    }
+
+    const body = bodyResult.body
     const email = typeof body.email === 'string' ? body.email.trim() : ''
     const password = typeof body.password === 'string' ? body.password : ''
     const name = typeof body.name === 'string' ? body.name.trim() : ''
 
-    if (!email || !password || !name) {
-      return Response.json({ error: 'Nombre, correo y contraseña son obligatorios.' }, { status: 400 })
+    if (
+      !email || email.length > 320 ||
+      !password || password.length > 1024 ||
+      !name || name.length > 120
+    ) {
+      return Response.json({ error: 'Nombre, correo y contraseña no son válidos.' }, { status: 400 })
     }
+
+    const [ipLimit, identityLimit] = await Promise.all([
+      consumeIpRateLimit(request, AUTH_RATE_LIMITS.signUpIp),
+      consumeIdentityRateLimit(email, AUTH_RATE_LIMITS.signUpIdentity),
+    ])
+    if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
+    if (!identityLimit.allowed) return authRateLimitResponse(identityLimit)
 
     const client = createServerClient()
     const { data, error } = await client.auth.signUp({

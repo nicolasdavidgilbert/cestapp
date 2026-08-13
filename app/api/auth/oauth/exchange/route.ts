@@ -9,6 +9,12 @@ import {
   setAuthCookies,
   toServerAuthSession,
 } from '@/src/services/auth'
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  consumeIpRateLimit,
+  readAuthJsonBody,
+} from '@/src/services/authSecurity'
 
 export async function POST(request: Request) {
   if (!isTrustedAuthRequest(request)) {
@@ -16,14 +22,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { code?: unknown }
+    const bodyResult = await readAuthJsonBody(request)
+    if (!bodyResult.ok) {
+      return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
+    }
+
+    const body = bodyResult.body
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     const { codeVerifier, redirectPath } = await getOAuthCookies()
 
-    if (!code || !codeVerifier) {
+    if (!code || code.length > 4096 || !codeVerifier) {
       await clearOAuthCookies()
       return Response.json({ error: 'El intento OAuth ha caducado. Inténtalo de nuevo.' }, { status: 400 })
     }
+
+    const ipLimit = await consumeIpRateLimit(request, AUTH_RATE_LIMITS.oauthExchangeIp)
+    if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
 
     const client = createServerClient()
     const { data, error } = await client.auth.exchangeOAuthCode(code, codeVerifier)

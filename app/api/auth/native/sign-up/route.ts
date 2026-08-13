@@ -2,16 +2,25 @@ import { createServerClient } from '@/src/services/auth'
 import {
   nativeJson,
   nativeProviderError,
-  readNativeAuthBody,
   rejectNonNativeRequest,
   toNativeAuthSession,
 } from '@/src/services/nativeAuth'
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  consumeIdentityRateLimit,
+  consumeIpRateLimit,
+  readAuthJsonBody,
+} from '@/src/services/authSecurity'
 
 export async function POST(request: Request) {
   const rejection = rejectNonNativeRequest(request)
   if (rejection) return rejection
 
-  const body = await readNativeAuthBody(request)
+  const bodyResult = await readAuthJsonBody(request)
+  if (!bodyResult.ok) return nativeJson({ error: bodyResult.error }, bodyResult.status)
+
+  const body = bodyResult.body
   const email = typeof body?.email === 'string' ? body.email.trim() : ''
   const password = typeof body?.password === 'string' ? body.password : ''
   const name = typeof body?.name === 'string' ? body.name.trim() : ''
@@ -23,6 +32,13 @@ export async function POST(request: Request) {
   ) {
     return nativeJson({ error: 'Nombre, correo y contraseña no son válidos.' }, 400)
   }
+
+  const [ipLimit, identityLimit] = await Promise.all([
+    consumeIpRateLimit(request, AUTH_RATE_LIMITS.signUpIp),
+    consumeIdentityRateLimit(email, AUTH_RATE_LIMITS.signUpIdentity),
+  ])
+  if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
+  if (!identityLimit.allowed) return authRateLimitResponse(identityLimit)
 
   const { data, error } = await createServerClient().auth.signUp({
     email,

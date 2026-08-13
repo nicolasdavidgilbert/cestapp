@@ -7,6 +7,12 @@ import {
   isTrustedAuthRequest,
   setOAuthCookies,
 } from '@/src/services/auth'
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  consumeIpRateLimit,
+  readAuthJsonBody,
+} from '@/src/services/authSecurity'
 
 const supportedProviders = new Set(['google', 'github'])
 
@@ -16,13 +22,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = (await request.json()) as { provider?: unknown; redirect?: unknown }
+    const bodyResult = await readAuthJsonBody(request)
+    if (!bodyResult.ok) {
+      return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
+    }
+
+    const body = bodyResult.body
     const provider = typeof body.provider === 'string' ? body.provider : ''
     const redirectPath = sanitizeRedirectPath(typeof body.redirect === 'string' ? body.redirect : null)
 
     if (!supportedProviders.has(provider)) {
       return Response.json({ error: 'Proveedor OAuth no permitido.' }, { status: 400 })
     }
+
+    const ipLimit = await consumeIpRateLimit(request, AUTH_RATE_LIMITS.oauthStartIp)
+    if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
 
     const client = createServerClient()
     const { data, error } = await client.auth.signInWithOAuth({
