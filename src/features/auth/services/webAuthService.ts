@@ -4,6 +4,10 @@ export type WebAuthSession = {
   user: User
 }
 
+export type WebRefreshSession = WebAuthSession & {
+  accessToken: string
+}
+
 type WebAuthResponse<T> = {
   data: T | null
   error?: string
@@ -60,7 +64,7 @@ export function verifyEmailWeb(email: string, code: string) {
 }
 
 export function refreshSessionWeb() {
-  return requestAuth<WebAuthSession>('/api/auth/refresh')
+  return requestAuth<WebRefreshSession>('/api/auth/refresh')
 }
 
 export function signOutWeb() {

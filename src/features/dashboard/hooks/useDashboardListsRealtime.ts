@@ -20,40 +20,22 @@ export function useDashboardListsRealtime({ userId, onListsChanged }: DashboardL
       }
     }
 
-    async function doSubscribe() {
-      if (cancelled) return
-
-      if (!insforge.realtime.isConnected) {
-        await insforge.realtime.connect()
-      }
-
-      if (cancelled) return
-
-      const result = await insforge.realtime.subscribe(channel)
-      if (!result.ok) {
-        console.error('[Dashboard] Failed to subscribe to ' + channel + ':', result.error?.message)
-      }
-    }
-
-    const handleConnect = () => {
-      if (!cancelled) {
-        insforge.realtime.subscribe(channel).then((result) => {
-          if (!result.ok) {
-            console.error('[Dashboard] Re-subscribe failed for ' + channel + ':', result.error?.message)
-          }
-        })
-      }
-    }
-
     insforge.realtime.on('user_lists_changed', realtimeHandler)
-    insforge.realtime.on('connect', handleConnect)
+    void insforge.realtime.subscribe(channel).then((result) => {
+      if (result.ok || cancelled) return
+      if (result.error.code === 'SUBSCRIPTION_CANCELLED' || result.error.code === 'DISCONNECTED') return
 
-    void doSubscribe()
+      console.error(
+        '[Dashboard] Failed to subscribe to ' + channel + ':',
+        result.error.code + ': ' + result.error.message,
+      )
+    }).catch((error: unknown) => {
+      if (!cancelled) console.error('[Dashboard] Failed to subscribe to ' + channel + ':', error)
+    })
 
     return () => {
       cancelled = true
       insforge.realtime.off('user_lists_changed', realtimeHandler)
-      insforge.realtime.off('connect', handleConnect)
       insforge.realtime.unsubscribe(channel)
     }
   }, [insforge, onListsChanged, userId])

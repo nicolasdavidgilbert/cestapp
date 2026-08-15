@@ -38,43 +38,23 @@ export function useListRealtime({
       onInviteLinksChanged()
     }
 
-    async function doSubscribe() {
-      if (cancelled) return
-
-      if (!insforge.realtime.isConnected) {
-        await insforge.realtime.connect()
-      }
-
-      if (cancelled) return
-      const result = await insforge.realtime.subscribe(channel)
-      if (!result.ok) {
-        console.error('[ListRealtime] Failed to subscribe to ' + channel + ':', result.error?.message)
-      }
-    }
-
-    const handleConnect = () => {
-      if (!cancelled) {
-        insforge.realtime.subscribe(channel).then((result) => {
-          if (!result.ok) {
-            console.error('[ListRealtime] Re-subscribe failed for ' + channel + ':', result.error?.message)
-          }
-        })
-      }
-    }
-
-    const handleDisconnect = () => {
-      if (!cancelled) void doSubscribe()
-    }
-
     insforge.realtime.on('list_changed', listUpdatesHandler)
     if (canManageMembers) {
       insforge.realtime.on('members_changed', membersUpdatesHandler)
       insforge.realtime.on('invite_links_changed', inviteLinksUpdatesHandler)
     }
-    insforge.realtime.on('connect', handleConnect)
-    insforge.realtime.on('disconnect', handleDisconnect)
 
-    void doSubscribe()
+    void insforge.realtime.subscribe(channel).then((result) => {
+      if (result.ok || cancelled) return
+      if (result.error.code === 'SUBSCRIPTION_CANCELLED' || result.error.code === 'DISCONNECTED') return
+
+      console.error(
+        '[ListRealtime] Failed to subscribe to ' + channel + ':',
+        result.error.code + ': ' + result.error.message,
+      )
+    }).catch((error: unknown) => {
+      if (!cancelled) console.error('[ListRealtime] Failed to subscribe to ' + channel + ':', error)
+    })
 
     return () => {
       cancelled = true
@@ -83,8 +63,6 @@ export function useListRealtime({
         insforge.realtime.off('members_changed', membersUpdatesHandler)
         insforge.realtime.off('invite_links_changed', inviteLinksUpdatesHandler)
       }
-      insforge.realtime.off('connect', handleConnect)
-      insforge.realtime.off('disconnect', handleDisconnect)
       insforge.realtime.unsubscribe(channel)
     }
   }, [canManageMembers, insforge, listId, onInviteLinksChanged, onListChanged, onMembersChanged, userId])

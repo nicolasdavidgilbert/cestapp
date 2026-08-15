@@ -1,7 +1,12 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { getInsforgeClient, replaceInsforgeClient } from '@/src/services/insforge'
+import {
+  establishInsforgeSession,
+  getInsforgeClient,
+  refreshInsforgeSession,
+  replaceInsforgeClient,
+} from '@/src/services/insforge'
 import type { RefreshResult, ThemePreference, User, UserContextType, UserProfile, UserProviderProps } from '@/src/types/auth'
 import type { NativeSessionResult } from '@/src/features/auth/types'
 import {
@@ -38,6 +43,7 @@ import {
   updateProfileWeb,
   verifyEmailWeb,
   type WebAuthSession,
+  type WebRefreshSession,
 } from '@/src/features/auth/services/webAuthService'
 import { THEME_PREFERENCE_STORAGE_KEY, applyThemePreference, resolveThemePreference } from '@/src/features/auth/services/themePreference'
 
@@ -88,13 +94,23 @@ export function UserProvider({ children }: UserProviderProps) {
   }, [])
 
   const applyWebSession = useCallback((session: WebAuthSession) => {
-    replaceInsforgeClient()
+    if (!establishInsforgeSession()) return false
+
+    setUser(normalizeUser(session.user))
+    setSessionUnavailable(false)
+    return true
+  }, [normalizeUser])
+
+  const applyRefreshedWebSession = useCallback((session: WebRefreshSession) => {
+    refreshInsforgeSession(session.accessToken)
     setUser(normalizeUser(session.user))
     setSessionUnavailable(false)
   }, [normalizeUser])
 
-  const applySecureNativeSession = useCallback((session: NativeSessionResult) => {
-    replaceInsforgeClient(session.accessToken)
+  const applySecureNativeSession = useCallback((session: NativeSessionResult, refreshed = false) => {
+    if (refreshed) refreshInsforgeSession(session.accessToken)
+    else establishInsforgeSession(session.accessToken)
+
     setUser(normalizeUser(session.user))
     setSessionUnavailable(false)
   }, [normalizeUser])
@@ -157,7 +173,7 @@ export function UserProvider({ children }: UserProviderProps) {
         return { ok: false, reason: 'auth' }
       }
 
-      applySecureNativeSession(session)
+      applySecureNativeSession(session, true)
       return { ok: true }
     } catch (error) {
       if (isAuthSessionError(error)) {
@@ -201,8 +217,8 @@ export function UserProvider({ children }: UserProviderProps) {
 
   const refreshWebSession = useCallback(async (): Promise<RefreshResult> => {
     const result = await refreshSessionWeb()
-    if (result.data?.user) {
-      applyWebSession(result.data)
+    if (result.data?.user && result.data.accessToken) {
+      applyRefreshedWebSession(result.data)
       return { ok: true }
     }
     if (result.status === 401 || result.status === 403) {
@@ -211,7 +227,7 @@ export function UserProvider({ children }: UserProviderProps) {
     }
     setSessionUnavailable(true)
     return { ok: false, reason: 'transient' }
-  }, [applyWebSession, handleRefreshFailure])
+  }, [applyRefreshedWebSession, handleRefreshFailure])
 
   const refreshSession = useCallback((): Promise<RefreshResult> => {
     if (refreshPromiseRef.current) return refreshPromiseRef.current
@@ -346,7 +362,9 @@ export function UserProvider({ children }: UserProviderProps) {
 
     const result = await signInWeb(email, password)
     if (!result.data) return { error: result.error }
-    applyWebSession(result.data)
+    if (!applyWebSession(result.data)) {
+      return { error: 'No se pudo establecer la sesión en este navegador.' }
+    }
     return {}
   }
 
@@ -379,7 +397,9 @@ export function UserProvider({ children }: UserProviderProps) {
     const result = await signUpWeb(email, password, name)
     if (!result.data) return { error: result.error }
     if (result.data.requireVerification) return { requireVerification: true }
-    applyWebSession(result.data)
+    if (!applyWebSession(result.data)) {
+      return { error: 'No se pudo establecer la sesión en este navegador.' }
+    }
     return {}
   }
 
@@ -405,7 +425,9 @@ export function UserProvider({ children }: UserProviderProps) {
 
     const result = await verifyEmailWeb(email, code)
     if (!result.data) return { error: result.error }
-    applyWebSession(result.data)
+    if (!applyWebSession(result.data)) {
+      return { error: 'No se pudo establecer la sesión en este navegador.' }
+    }
     return {}
   }
 

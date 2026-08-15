@@ -1,5 +1,9 @@
 import { Capacitor } from '@capacitor/core'
-import { createClient, type InsForgeClient } from '@insforge/sdk'
+import {
+  AuthChangeEvent,
+  createClient,
+  type InsForgeClient,
+} from '@insforge/sdk'
 import { createBrowserClient as createInsforgeBrowserClient } from '@insforge/sdk/ssr'
 import {
   INSFORGE_ANON_KEY,
@@ -36,13 +40,42 @@ export function getInsforgeClient() {
   return currentClient
 }
 
+function getBrowserAccessToken() {
+  if (typeof document === 'undefined') return null
+
+  const cookieName = INSFORGE_AUTH_COOKIE_SETTINGS.names.accessToken
+  for (const part of document.cookie.split(';')) {
+    const [rawName, ...rawValue] = part.trim().split('=')
+    if (rawName !== cookieName) continue
+
+    const value = rawValue.join('=')
+    try {
+      return decodeURIComponent(value)
+    } catch {
+      return value
+    }
+  }
+
+  return null
+}
+
+export function establishInsforgeSession(accessToken?: string) {
+  const nextAccessToken = accessToken ?? getBrowserAccessToken()
+  if (!nextAccessToken) return false
+
+  currentClient.setAccessToken(nextAccessToken, AuthChangeEvent.SIGNED_IN)
+  return true
+}
+
+export function refreshInsforgeSession(accessToken: string) {
+  currentClient.setAccessToken(accessToken, AuthChangeEvent.TOKEN_REFRESHED)
+}
+
 export function replaceInsforgeClient(accessToken?: string) {
   const previousClient = currentClient
   currentClient = createBrowserClient(accessToken)
 
-  if (previousClient.realtime.isConnected) {
-    previousClient.realtime.disconnect()
-  }
+  previousClient.realtime.disconnect()
 
   for (const listener of listeners) {
     listener()
