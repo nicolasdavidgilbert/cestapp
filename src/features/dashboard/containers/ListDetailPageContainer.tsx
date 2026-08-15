@@ -1,9 +1,11 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useListRealtime } from '@/src/features/dashboard/hooks/useListRealtime'
 import { useListDerivedState } from '@/src/features/dashboard/hooks/useListDerivedState'
+import { useListItemMutations } from '@/src/features/dashboard/hooks/useListItemMutations'
+import { useListResources } from '@/src/features/dashboard/hooks/useListResources'
 import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
 import { UserAvatar } from '@/src/components/atoms/UserAvatar'
 import { AddProductModal } from '@/src/features/dashboard/components/list/AddProductModal'
@@ -18,7 +20,7 @@ import type { ProductSummary } from '@/src/types/product'
 import { getListChannel } from '@/src/features/dashboard/services/realtimeService'
 import { createOptimisticId, parseOptionalPrice } from '@/src/utils/productValues'
 import { firstRpcRow } from '@/src/utils/rpc'
-import { createInviteLinkRecord, createProductForList, deleteListItem, deleteListItems, deleteListShare, deleteShoppingList, fetchActiveInviteLinks, fetchListById, fetchListItemByProduct, fetchListItems, fetchListMembership, fetchListProductSummary, fetchListShareMembers, fetchOwnListProducts, fetchVisibleListProducts, formatInviteStatus, getInviteExpiryDate, incrementListItemQuantity, insertListItem, inviteExpiryOptions, publishListRealtimeEvent, publishUserListsRealtimeEvent, revokeInviteLinkRecord, shareListWithEmail, updateListItemChecked, updateListItemQuantity, updateShoppingListName } from '@/src/features/dashboard/services/listDetailService'
+import { createInviteLinkRecord, createProductForList, deleteListShare, deleteShoppingList, fetchListItemByProduct, fetchListProductSummary, formatInviteStatus, getInviteExpiryDate, inviteExpiryOptions, publishListRealtimeEvent, publishUserListsRealtimeEvent, revokeInviteLinkRecord, shareListWithEmail, updateShoppingListName } from '@/src/features/dashboard/services/listDetailService'
 
 
 export default function ListDetailPage() {
@@ -26,17 +28,30 @@ export default function ListDetailPage() {
   const params = useParams()
   const listId = params.id as string
   const { user, loading: authLoading } = useProtectedUser()
-  const [list, setList] = useState<ShoppingList | null>(null)
-  const [items, setItems] = useState<ListItem[]>([])
-  const [products, setProducts] = useState<ProductSummary[]>([])
-  const [members, setMembers] = useState<ShoppingListShare[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    canManageMembers,
+    error,
+    inviteLinks,
+    items,
+    list,
+    listNameDraft,
+    loading,
+    loadingInviteLinks,
+    members,
+    products,
+    loadData,
+    loadInviteLinks,
+    loadMembers,
+    setError,
+    setItems,
+    setList,
+    setListNameDraft,
+    setProducts,
+  } = useListResources({ listId, userId: user?.id })
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [newProduct, setNewProduct] = useState({ title: '', description: '', price: '' })
   const [creatingProduct, setCreatingProduct] = useState(false)
-  const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<DashboardTab>('products')
-  const [listNameDraft, setListNameDraft] = useState('')
   const [savingListName, setSavingListName] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [sharingEmail, setSharingEmail] = useState(false)
@@ -44,111 +59,12 @@ export default function ListDetailPage() {
   const [quickProductPrice, setQuickProductPrice] = useState('')
   const { value: successMessage, show: showSuccess } = useTimedValue('', 1800)
   const [inviteExpiry, setInviteExpiry] = useState<InviteExpiryOption>('7d')
-  const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([])
-  const [loadingInviteLinks, setLoadingInviteLinks] = useState(false)
   const [generatingInviteLink, setGeneratingInviteLink] = useState(false)
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null)
   const { value: copiedLinkToken, show: showCopiedLink } = useTimedValue<string | null>(null, 1600)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
-  const [updatingItems, setUpdatingItems] = useState<Set<string>>(new Set())
-  const [removingCheckedItems, setRemovingCheckedItems] = useState(false)
 
   const listChannel = getListChannel(listId)
-  const canManageMembers = list?.owner_id === user?.id
-
-  const loadMembers = useCallback(async () => {
-    const { data, error } = await fetchListShareMembers(listId)
-
-    if (error) {
-      setError(error.message)
-      return
-    }
-
-    setMembers((data as ShoppingListShare[]) || [])
-  }, [listId])
-
-  const loadInviteLinks = useCallback(async () => {
-    if (!canManageMembers) {
-      setInviteLinks([])
-      return
-    }
-
-    setLoadingInviteLinks(true)
-    const { data, error } = await fetchActiveInviteLinks(listId)
-
-    if (error) {
-      setError(error.message)
-      setLoadingInviteLinks(false)
-      return
-    }
-
-    setInviteLinks((data as InviteLink[]) || [])
-    setLoadingInviteLinks(false)
-  }, [canManageMembers, listId])
-
-  const loadData = useCallback(async () => {
-    if (!user) return
-    setError('')
-
-    const [listRes, itemsRes, ownProductsRes] = await Promise.all([
-      fetchListById(listId),
-      fetchListItems(listId),
-      fetchOwnListProducts(user.id),
-    ])
-
-    const firstError = listRes.error ?? itemsRes.error ?? ownProductsRes.error
-    if (firstError) {
-      setError(firstError.message)
-      setLoading(false)
-      return
-    }
-
-    if (!listRes.data) {
-      setError('No se encontró la lista.')
-      setLoading(false)
-      return
-    }
-
-    if (listRes.data.owner_id !== user.id) {
-      const { data: membership } = await fetchListMembership(listId, user.id)
-
-      if (!membership) {
-        setError('No tienes permisos para ver esta lista.')
-        setLoading(false)
-        return
-      }
-    }
-
-    const nextList = listRes.data as ShoppingList
-    setList(nextList)
-    setListNameDraft(nextList.name)
-
-    let listProducts: ProductSummary[] = []
-    if ((itemsRes.data || []).length > 0) {
-      const { data: listProductsData, error: listProductsError } = await fetchVisibleListProducts(listId)
-
-      if (listProductsError) {
-        setError(listProductsError.message)
-        setLoading(false)
-        return
-      }
-
-      listProducts = (listProductsData as ProductSummary[]) || []
-    }
-
-    if (itemsRes.data) {
-      const itemsWithProducts = itemsRes.data.map((item) => ({
-        ...item,
-        product: listProducts.find((product) => product.id === item.product_id),
-      }))
-      setItems(itemsWithProducts as ListItem[])
-    } else {
-      setItems([])
-    }
-
-    setProducts((ownProductsRes.data as ProductSummary[]) || [])
-    setLoading(false)
-  }, [listId, user])
 
   const publishListEvent = useCallback(
     async (eventName: string, payload: RealtimeEventPayload) => {
@@ -170,6 +86,26 @@ export default function ListDetailPage() {
     },
     [listId, user?.id]
   )
+
+  const {
+    addExistingProduct,
+    removeCheckedItems,
+    removeItem,
+    removingCheckedItems,
+    toggleChecked,
+    updateQuantity,
+    updatingItems,
+  } = useListItemMutations({
+    listId,
+    items,
+    products,
+    setItems,
+    setError,
+    setProductSearch,
+    setShowAddProduct,
+    publishListEvent,
+    showSuccess,
+  })
 
   const applyRealtimeListChange = useCallback(
     (payload: ListChangedRealtimePayload) => {
@@ -253,7 +189,7 @@ export default function ListDetailPage() {
           void loadData()
       }
     },
-    [loadData]
+    [loadData, setItems, setProducts]
   )
 
   const handleMembersRealtimeChange = useCallback(() => {
@@ -264,23 +200,6 @@ export default function ListDetailPage() {
   const handleInviteLinksRealtimeChange = useCallback(() => {
     void loadInviteLinks()
   }, [loadInviteLinks])
-
-  useEffect(() => {
-    if (user && listId) {
-      queueMicrotask(() => {
-        void loadData()
-      })
-    }
-  }, [user, listId, loadData])
-
-  useEffect(() => {
-    if (!canManageMembers) return
-
-    queueMicrotask(() => {
-      void loadMembers()
-      void loadInviteLinks()
-    })
-  }, [canManageMembers, loadInviteLinks, loadMembers])
 
   function buildInviteUrl(token: string) {
     if (typeof window === 'undefined') return `/invite/${token}`
@@ -436,106 +355,6 @@ export default function ListDetailPage() {
     setRemovingMemberId(null)
   }
 
-  async function addExistingProduct(productId: string) {
-    setError('')
-    const existingItem = items.find((item) => item.product_id === productId)
-    const optimisticItemId = createOptimisticId('optimistic-item')
-    const selectedProduct =
-      products.find((product) => product.id === productId) ??
-      existingItem?.product ?? {
-        id: productId,
-        title: 'Producto',
-        current_price: null,
-      }
-
-    if (existingItem) {
-      setItems((current) =>
-        current.map((item) =>
-          item.id === existingItem.id
-            ? {
-                ...item,
-                quantity: item.quantity + 1,
-              }
-            : item
-        )
-      )
-    } else {
-      const optimisticItem: ListItem = {
-        id: optimisticItemId,
-        list_id: listId,
-        product_id: productId,
-        quantity: 1,
-        checked: false,
-        product: selectedProduct,
-      }
-      setItems((current) => [optimisticItem, ...current])
-    }
-
-    setShowAddProduct(false)
-    setProductSearch('')
-    showSuccess(existingItem ? 'Cantidad actualizada' : 'Producto añadido')
-
-    const response = existingItem
-      ? await incrementListItemQuantity(existingItem.id, existingItem.quantity + 1)
-      : await insertListItem(listId, productId)
-
-    if (response.error) {
-      if (existingItem) {
-        setItems((current) =>
-          current.map((item) =>
-            item.id === existingItem.id
-              ? {
-                  ...item,
-                  quantity: existingItem.quantity,
-                }
-              : item
-          )
-        )
-      } else {
-        setItems((current) => current.filter((item) => item.id !== optimisticItemId))
-      }
-      setError(response.error.message)
-      return
-    }
-
-    const syncedItem = response.data ? ({ ...(response.data as ListItem), product: selectedProduct } as ListItem) : null
-
-    if (!existingItem && syncedItem) {
-      const createdItem = response.data as ListItem
-      setItems((current) =>
-        current.map((item) =>
-          item.id === optimisticItemId
-            ? {
-                ...createdItem,
-                product: selectedProduct,
-              }
-            : item
-        )
-      )
-    }
-
-    try {
-      await publishListEvent(
-        'list_changed',
-        existingItem
-          ? {
-              action: 'item_quantity',
-              item_id: syncedItem?.id ?? existingItem.id,
-              product_id: productId,
-              quantity: syncedItem?.quantity ?? existingItem.quantity + 1,
-            }
-          : {
-              action: 'item_added',
-              item: syncedItem,
-              product: selectedProduct,
-              product_id: productId,
-            }
-      )
-    } catch {
-      setError('Se agregó el producto, pero no se pudo notificar en tiempo real.')
-    }
-  }
-
   async function createProductWithValues(titleInput: string, descriptionInput: string, priceInput: string) {
     const title = titleInput.trim()
     if (!title) return
@@ -649,221 +468,6 @@ export default function ListDetailPage() {
   async function createMissingProduct(e: React.FormEvent) {
     e.preventDefault()
     await createProductWithValues(productSearch, '', quickProductPrice)
-  }
-
-  async function toggleChecked(item: ListItem) {
-    const nextValue = !item.checked
-    const previousChecked = item.checked
-
-    // Optimistic update
-    setItems(current => current.map(i => i.id === item.id ? { ...i, checked: nextValue } : i))
-    setUpdatingItems(prev => new Set(prev).add(item.id))
-    setError('')
-
-    const { error } = await updateListItemChecked(item.id, nextValue)
-
-    if (error) {
-      setItems(current => current.map(i => i.id === item.id ? { ...i, checked: previousChecked } : i))
-      setError(`Error al marcar item: ${error.message}`)
-      setUpdatingItems(prev => {
-        const next = new Set(prev)
-        next.delete(item.id)
-        return next
-      })
-      return
-    }
-
-    try {
-      await publishListEvent('list_changed', {
-        action: 'item_checked',
-        checked: nextValue,
-        item_id: item.id,
-        product_id: item.product_id,
-      })
-    } catch {
-      setError('Se guardó el cambio, pero no se pudo notificar en tiempo real.')
-    } finally {
-      setUpdatingItems(prev => {
-        const next = new Set(prev)
-        next.delete(item.id)
-        return next
-      })
-    }
-  }
-
-  async function updateQuantity(item: ListItem, delta: number) {
-    const newQuantity = item.quantity + delta
-    const previousIndex = items.findIndex((i) => i.id === item.id)
-
-    if (newQuantity < 1) {
-      const itemLabel = item.product?.title || 'este producto'
-      if (!window.confirm(`¿Quitar ${itemLabel} de la lista?`)) return
-
-      // Optimistic delete when decrementing below one. Explicit delete still asks for confirmation.
-      setItems(current => current.filter(i => i.id !== item.id))
-    } else {
-      // Optimistic update
-      setItems(current => current.map(i => i.id === item.id ? { ...i, quantity: newQuantity } : i))
-    }
-    
-    setUpdatingItems(prev => new Set(prev).add(item.id))
-    setError('')
-
-    const { error } =
-      newQuantity < 1
-        ? await deleteListItem(item.id)
-        : await updateListItemQuantity(item.id, newQuantity)
-
-    if (error) {
-      setItems(current => {
-        if (newQuantity < 1) {
-          const alreadyPresent = current.some((i) => i.id === item.id)
-          if (alreadyPresent) return current
-          const next = [...current]
-          const insertAt = previousIndex >= 0 ? Math.min(previousIndex, next.length) : next.length
-          next.splice(insertAt, 0, item)
-          return next
-        }
-
-        return current.map((i) => (i.id === item.id ? { ...i, quantity: item.quantity } : i))
-      })
-      setError(`Error al actualizar cantidad: ${error.message}`)
-      setUpdatingItems(prev => {
-        const next = new Set(prev)
-        next.delete(item.id)
-        return next
-      })
-      return
-    }
-
-    try {
-      await publishListEvent(
-        'list_changed',
-        newQuantity < 1
-          ? {
-              action: 'item_removed',
-              item_id: item.id,
-              product_id: item.product_id,
-            }
-          : {
-              action: 'item_quantity',
-              item_id: item.id,
-              product_id: item.product_id,
-              quantity: newQuantity,
-            }
-      )
-    } catch {
-      setError('Se guardó el cambio, pero no se pudo notificar en tiempo real.')
-    } finally {
-      setUpdatingItems(prev => {
-        const next = new Set(prev)
-        next.delete(item.id)
-        return next
-      })
-    }
-  }
-
-  async function removeItem(itemId: string) {
-    const previousItem = items.find((item) => item.id === itemId)
-    const previousIndex = items.findIndex((item) => item.id === itemId)
-    const itemLabel = previousItem?.product?.title || 'este producto'
-    if (!window.confirm(`Quitar ${itemLabel} de la lista?`)) return
-
-    // Optimistic delete
-    setItems(current => current.filter(i => i.id !== itemId))
-    setUpdatingItems(prev => new Set(prev).add(itemId))
-    setError('')
-
-    const { error } = await deleteListItem(itemId)
-    
-    if (error) {
-      if (previousItem) {
-        setItems(current => {
-          const alreadyPresent = current.some((item) => item.id === itemId)
-          if (alreadyPresent) return current
-          const next = [...current]
-          const insertAt = previousIndex >= 0 ? Math.min(previousIndex, next.length) : next.length
-          next.splice(insertAt, 0, previousItem)
-          return next
-        })
-      }
-      setError(`Error al eliminar item: ${error.message}`)
-      setUpdatingItems(prev => {
-        const next = new Set(prev)
-        next.delete(itemId)
-        return next
-      })
-      return
-    }
-
-    try {
-      await publishListEvent('list_changed', {
-        action: 'item_removed',
-        item_id: itemId,
-        product_id: previousItem?.product_id,
-      })
-    } catch {
-      setError('Se guardó el cambio, pero no se pudo notificar en tiempo real.')
-    } finally {
-      setUpdatingItems(prev => {
-        const next = new Set(prev)
-        next.delete(itemId)
-        return next
-      })
-    }
-  }
-
-  async function removeCheckedItems() {
-    const itemsToRemove = items.filter((item) => item.checked)
-    if (itemsToRemove.length === 0) return
-
-    const confirmMessage = itemsToRemove.length === 1
-      ? 'Eliminar el producto seleccionado de la lista?'
-      : "Eliminar los " + itemsToRemove.length + " productos seleccionados de la lista?"
-
-    if (!window.confirm(confirmMessage)) return
-
-    const idsToRemove = new Set(itemsToRemove.map((item) => item.id))
-    const previousItems = items
-
-    setRemovingCheckedItems(true)
-    setUpdatingItems((prev) => new Set([...prev, ...idsToRemove]))
-    setItems((current) => current.filter((item) => !idsToRemove.has(item.id)))
-    setError('')
-
-    const { error } = await deleteListItems(Array.from(idsToRemove))
-
-    if (error) {
-      setItems(previousItems)
-      setError("Error al eliminar productos: " + error.message)
-      setUpdatingItems((prev) => {
-        const next = new Set(prev)
-        idsToRemove.forEach((itemId) => next.delete(itemId))
-        return next
-      })
-      setRemovingCheckedItems(false)
-      return
-    }
-
-    try {
-      await Promise.all(itemsToRemove.map((item) =>
-        publishListEvent('list_changed', {
-          action: 'item_removed',
-          item_id: item.id,
-          product_id: item.product_id,
-        })
-      ))
-      showSuccess(itemsToRemove.length === 1 ? 'Producto eliminado' : 'Productos eliminados')
-    } catch {
-      setError('Se guardó el cambio, pero no se pudo notificar en tiempo real.')
-    } finally {
-      setUpdatingItems((prev) => {
-        const next = new Set(prev)
-        idsToRemove.forEach((itemId) => next.delete(itemId))
-        return next
-      })
-      setRemovingCheckedItems(false)
-    }
   }
 
   async function deleteList() {
@@ -1227,7 +831,7 @@ export default function ListDetailPage() {
                             <div key={invite.id} className="flex flex-col gap-3 rounded-2xl bg-muted/40 p-4 ring-1 ring-border/20">
                               <div className="space-y-1">
                                 <p className="truncate text-xs font-medium text-muted-foreground tracking-tight">{buildInviteUrl(invite.token)}</p>
-                                <p className={`text-[10px] font-bold uppercase tracking-widest ${invite.expires_at && new Date(invite.expires_at).getTime() <= Date.now() ? 'text-destructive' : 'text-secondary'}`}>
+                                <p className={`text-[10px] font-bold uppercase tracking-widest ${formatInviteStatus(invite) === 'Expirado' ? 'text-destructive' : 'text-secondary'}`}>
                                   {formatInviteStatus(invite)}
                                 </p>
                               </div>
