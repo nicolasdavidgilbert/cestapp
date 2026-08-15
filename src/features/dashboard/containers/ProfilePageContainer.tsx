@@ -1,24 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useUser } from '@/src/store/UserContext'
 import MobileDashboardNav from '@/src/layout/MobileDashboardNav'
 import { ProfileForm } from '@/src/features/dashboard/components/profile/ProfileForm'
 import { Toast } from '@/src/components/atoms/Toast'
+import { ProtectedPageLoader } from '@/src/components/atoms/AsyncPageState'
+import { useProtectedUser } from '@/src/hooks/useProtectedUser'
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user, loading, signOut, updateProfile, themePreference, setThemePreference } = useUser()
+  const { user, loading, signOut, updateProfile, themePreference, setThemePreference } = useProtectedUser()
   const [savingTheme, setSavingTheme] = useState(false)
   const [themeError, setThemeError] = useState('')
   const [themeSuccess, setThemeSuccess] = useState('')
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/sign-in')
-    }
-  }, [loading, user, router])
 
   async function handleSignOut() {
     await signOut()
@@ -46,14 +41,7 @@ export default function ProfilePage() {
   }
 
   if (loading || !user) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-border border-t-secondary" />
-          <p className="text-sm font-bold uppercase tracking-widest text-secondary">Sincronizando perfil</p>
-        </div>
-      </main>
-    )
+    return <ProtectedPageLoader label="Sincronizando perfil" />
   }
 
   return (

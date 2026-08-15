@@ -158,14 +158,6 @@ export type DashboardTabDefinition = {
   icon: ReactNode
 }
 
-export type LoadListsOptions = {
-  force?: boolean
-  keepCurrentUI?: boolean
-  retried?: boolean
-}
-
-export type LoadListsHandler = (options?: LoadListsOptions) => Promise<void>
-
 export type InviteExpiryDefinition = {
   value: InviteExpiryOption
   label: string

@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useUser } from '@/src/store/UserContext'
 import { useListRealtime } from '@/src/features/dashboard/hooks/useListRealtime'
 import { useListDerivedState } from '@/src/features/dashboard/hooks/useListDerivedState'
 import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
@@ -11,6 +10,8 @@ import { AddProductModal } from '@/src/features/dashboard/components/list/AddPro
 import { FloatingActionButton } from '@/src/components/atoms/FloatingActionButton'
 import { CheckedListItemRow, PendingListItemRow } from '@/src/features/dashboard/components/list/ListItemRow'
 import { Toast } from '@/src/components/atoms/Toast'
+import { ProtectedPageLoader } from '@/src/components/atoms/AsyncPageState'
+import { useProtectedUser } from '@/src/hooks/useProtectedUser'
 import type { CreatedListProduct, DashboardTab, DashboardTabDefinition, InviteExpiryOption, InviteLink, ListChangedRealtimePayload, ListItem, RealtimeEventPayload, ShareByEmailResult, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
 import type { ProductSummary } from '@/src/types/product'
 import { getListChannel } from '@/src/features/dashboard/services/realtimeService'
@@ -23,7 +24,7 @@ export default function ListDetailPage() {
   const router = useRouter()
   const params = useParams()
   const listId = params.id as string
-  const { user, loading: authLoading } = useUser()
+  const { user, loading: authLoading } = useProtectedUser()
   const [list, setList] = useState<ShoppingList | null>(null)
   const [items, setItems] = useState<ListItem[]>([])
   const [products, setProducts] = useState<ProductSummary[]>([])
@@ -269,12 +270,6 @@ export default function ListDetailPage() {
   const handleInviteLinksRealtimeChange = useCallback(() => {
     void loadInviteLinks()
   }, [loadInviteLinks])
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/sign-in')
-    }
-  }, [authLoading, user, router])
 
   useEffect(() => {
     if (user && listId) {
@@ -917,14 +912,7 @@ export default function ListDetailPage() {
   })
 
   if (authLoading || !user) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6 bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-muted border-t-secondary" />
-          <p className="text-sm font-bold uppercase tracking-widest text-secondary">Sincronizando lista</p>
-        </div>
-      </main>
-    )
+    return <ProtectedPageLoader label="Sincronizando lista" />
   }
 
   return (

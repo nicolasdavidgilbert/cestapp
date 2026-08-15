@@ -53,11 +53,6 @@ export type ProductEditorModalProps = {
 
 export type ProductHistoryEditMap = Record<string, string>
 
-export type LoadProductsOptions = {
-  force?: boolean
-  keepCurrentUI?: boolean
-}
-
 export type ProductsDerivedStateInput = {
   products: ProductRecord[]
   search: string

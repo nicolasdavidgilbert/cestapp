@@ -450,9 +450,9 @@ export function UserProvider({ children }: UserProviderProps) {
     return {}
   }
 
-  async function refreshUser() {
+  const refreshUser = useCallback(async () => {
     await checkUser()
-  }
+  }, [checkUser])
 
   const persistProfile = useCallback(async (profile: Record<string, unknown>) => {
     if (isNativeCapacitorApp()) {

@@ -16,8 +16,6 @@ export function ProfileForm({
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  const inputClassName = "w-full rounded-2xl border border-border bg-muted/20 px-5 sm:px-6 py-3.5 sm:py-4 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all focus:border-secondary/40 focus:bg-muted/40 focus:ring-4 focus:ring-secondary/10"
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
