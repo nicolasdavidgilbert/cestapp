@@ -8,11 +8,13 @@ import { ProductCreateModal } from '@/src/features/products/components/ProductCr
 import { ProductEditorModal } from '@/src/features/products/components/ProductEditorModal'
 import { ProductCard } from '@/src/features/products/components/ProductCard'
 import { FloatingActionButton } from '@/src/components/atoms/FloatingActionButton'
-import type { LoadProductsOptions, PriceHistory, Product, ProductHistoryEditMap } from '@/src/features/products/types'
+import type { LoadProductsOptions, PriceHistory, ProductHistoryEditMap } from '@/src/features/products/types'
+import type { ProductRecord } from '@/src/types/product'
 import { isAuthError, isAuthErrorMessage } from '@/src/utils/authErrors'
 import { readLocalCache, writeLocalCache } from '@/src/utils/localCache'
 import { deletePriceHistoryEntry, fetchProductPriceHistory, fetchProductsByUser, insertPriceHistory, insertProduct, reconcileProducts, updatePriceHistoryEntry, updateProductCurrentPrice, updateProductDetails } from '@/src/features/products/services/productsService'
 import { useProductsDerivedState } from '@/src/features/products/hooks/useProductsDerivedState'
+import { createOptimisticId, parseOptionalPrice, parseRequiredPrice } from '@/src/utils/productValues'
 
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000
 const PRODUCTS_CACHE_PREFIX = 'products_cache_v1:'
@@ -22,24 +24,24 @@ function getProductsCacheKey(userId: string) {
   return `${PRODUCTS_CACHE_PREFIX}${userId}`
 }
 
-function readCachedProducts(userId: string): Product[] | null {
-  return readLocalCache<Product[]>(getProductsCacheKey(userId), PRODUCTS_CACHE_TTL_MS, 'products')
+function readCachedProducts(userId: string): ProductRecord[] | null {
+  return readLocalCache<ProductRecord[]>(getProductsCacheKey(userId), PRODUCTS_CACHE_TTL_MS, 'products')
 }
 
-function writeCachedProducts(userId: string, products: Product[]) {
+function writeCachedProducts(userId: string, products: ProductRecord[]) {
   writeLocalCache(getProductsCacheKey(userId), products, 'products')
 }
 
 export default function ProductsPage() {
   const router = useRouter()
   const { user, loading: authLoading, refreshUser } = useUser()
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<ProductRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [newProduct, setNewProduct] = useState({ title: '', description: '', price: '' })
   const [creating, setCreating] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [selectedProduct, setSelectedProduct] = useState<ProductRecord | null>(null)
   const [showEditor, setShowEditor] = useState(false)
   const [editorForm, setEditorForm] = useState({ title: '', description: '' })
   const [savingProduct, setSavingProduct] = useState(false)
@@ -54,7 +56,7 @@ export default function ProductsPage() {
   const hydratedFromCacheRef = useRef(false)
 
   const applyProducts = useCallback(
-    (nextProducts: Product[]) => {
+    (nextProducts: ProductRecord[]) => {
       if (!user) return
       setProducts((previous) => {
         const reconciled = reconcileProducts(previous, nextProducts)
@@ -149,10 +151,14 @@ export default function ProductsPage() {
 
     const title = newProduct.title.trim()
     const description = newProduct.description.trim() || null
-    const price = newProduct.price ? parseFloat(newProduct.price) : null
-    const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const price = parseOptionalPrice(newProduct.price)
+    if (price === undefined) {
+      setError('Introduce un precio válido.')
+      return
+    }
+    const optimisticId = createOptimisticId('optimistic-product')
     const now = new Date().toISOString()
-    const optimisticProduct: Product = {
+    const optimisticProduct: ProductRecord = {
       id: optimisticId,
       title,
       description,
@@ -195,7 +201,7 @@ export default function ProductsPage() {
     })
   }
 
-  async function openProductEditor(product: Product) {
+  async function openProductEditor(product: ProductRecord) {
     setError('')
     setSelectedProduct(product)
     setEditorForm({
@@ -222,7 +228,7 @@ export default function ProductsPage() {
     }
 
     if (data) {
-      const updatedProduct = data as Product
+      const updatedProduct = data as ProductRecord
       setSelectedProduct(updatedProduct)
       setProducts((current) => current.map((product) => (product.id === updatedProduct.id ? updatedProduct : product)))
     }
@@ -232,8 +238,8 @@ export default function ProductsPage() {
 
   async function addNewHistoryPrice() {
     if (!selectedProduct || !user) return
-    const parsedPrice = Number(newHistoryPrice.replace(',', '.'))
-    if (Number.isNaN(parsedPrice) || parsedPrice < 0) return
+    const parsedPrice = parseRequiredPrice(newHistoryPrice)
+    if (parsedPrice === undefined) return
 
     setAddingHistory(true)
     setError('')
@@ -292,8 +298,8 @@ export default function ProductsPage() {
   async function saveHistoryEntry(entryId: string) {
     if (!selectedProduct) return
     const rawValue = editingHistory[entryId] ?? ''
-    const parsedPrice = Number(rawValue.replace(',', '.'))
-    if (Number.isNaN(parsedPrice) || parsedPrice < 0) return
+    const parsedPrice = parseRequiredPrice(rawValue)
+    if (parsedPrice === undefined) return
 
     setSavingHistoryId(entryId)
     setError('')

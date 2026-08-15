@@ -11,7 +11,11 @@ import { AddProductModal } from '@/src/features/dashboard/components/list/AddPro
 import { FloatingActionButton } from '@/src/components/atoms/FloatingActionButton'
 import { CheckedListItemRow, PendingListItemRow } from '@/src/features/dashboard/components/list/ListItemRow'
 import { Toast } from '@/src/components/atoms/Toast'
-import type { CreatedListProduct, DashboardTab, DashboardTabDefinition, InviteExpiryOption, InviteLink, ListChangedRealtimePayload, ListItem, Product, RealtimeEventPayload, ShareByEmailResult, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
+import type { CreatedListProduct, DashboardTab, DashboardTabDefinition, InviteExpiryOption, InviteLink, ListChangedRealtimePayload, ListItem, RealtimeEventPayload, ShareByEmailResult, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
+import type { ProductSummary } from '@/src/types/product'
+import { getListChannel } from '@/src/features/dashboard/services/realtimeService'
+import { createOptimisticId, parseOptionalPrice } from '@/src/utils/productValues'
+import { firstRpcRow } from '@/src/utils/rpc'
 import { createInviteLinkRecord, createProductForList, deleteListItem, deleteListItems, deleteListShare, deleteShoppingList, fetchActiveInviteLinks, fetchListById, fetchListItemByProduct, fetchListItems, fetchListMembership, fetchListProductSummary, fetchListShareMembers, fetchOwnListProducts, fetchVisibleListProducts, formatInviteStatus, getInviteExpiryDate, incrementListItemQuantity, insertListItem, inviteExpiryOptions, publishListRealtimeEvent, publishUserListsRealtimeEvent, revokeInviteLinkRecord, shareListWithEmail, updateListItemChecked, updateListItemQuantity, updateShoppingListName } from '@/src/features/dashboard/services/listDetailService'
 
 
@@ -22,7 +26,7 @@ export default function ListDetailPage() {
   const { user, loading: authLoading } = useUser()
   const [list, setList] = useState<ShoppingList | null>(null)
   const [items, setItems] = useState<ListItem[]>([])
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<ProductSummary[]>([])
   const [members, setMembers] = useState<ShoppingListShare[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddProduct, setShowAddProduct] = useState(false)
@@ -47,7 +51,7 @@ export default function ListDetailPage() {
   const [updatingItems, setUpdatingItems] = useState<Set<string>>(new Set())
   const [removingCheckedItems, setRemovingCheckedItems] = useState(false)
 
-  const listChannel = `list:${listId}`
+  const listChannel = getListChannel(listId)
   const canManageMembers = list?.owner_id === user?.id
 
   const showSuccess = useCallback((message: string) => {
@@ -124,7 +128,7 @@ export default function ListDetailPage() {
     setList(nextList)
     setListNameDraft(nextList.name)
 
-    let listProducts: Product[] = []
+    let listProducts: ProductSummary[] = []
     if ((itemsRes.data || []).length > 0) {
       const { data: listProductsData, error: listProductsError } = await fetchVisibleListProducts(listId)
 
@@ -134,7 +138,7 @@ export default function ListDetailPage() {
         return
       }
 
-      listProducts = (listProductsData as Product[]) || []
+      listProducts = (listProductsData as ProductSummary[]) || []
     }
 
     if (itemsRes.data) {
@@ -147,7 +151,7 @@ export default function ListDetailPage() {
       setItems([])
     }
 
-    setProducts((ownProductsRes.data as Product[]) || [])
+    setProducts((ownProductsRes.data as ProductSummary[]) || [])
     setLoading(false)
   }, [listId, user])
 
@@ -314,7 +318,7 @@ export default function ListDetailPage() {
       return
     }
 
-    const shareResult = (Array.isArray(data) ? data[0] : data) as ShareByEmailResult | undefined
+    const shareResult = firstRpcRow<ShareByEmailResult>(data)
     if (!shareResult) {
       setError('No se pudo compartir la lista con ese email.')
       setSharingEmail(false)
@@ -449,7 +453,7 @@ export default function ListDetailPage() {
   async function addExistingProduct(productId: string) {
     setError('')
     const existingItem = items.find((item) => item.product_id === productId)
-    const optimisticItemId = `optimistic-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const optimisticItemId = createOptimisticId('optimistic-item')
     const selectedProduct =
       products.find((product) => product.id === productId) ??
       existingItem?.product ?? {
@@ -551,11 +555,14 @@ export default function ListDetailPage() {
     if (!title) return
 
     const description = descriptionInput.trim() || null
-    const parsedPrice = priceInput.trim() ? Number(priceInput.replace(',', '.')) : null
-    const price = parsedPrice !== null && Number.isFinite(parsedPrice) ? parsedPrice : null
-    const optimisticProductId = `optimistic-product-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-    const optimisticItemId = `optimistic-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-    const optimisticProduct: Product = {
+    const price = parseOptionalPrice(priceInput)
+    if (price === undefined) {
+      setError('Introduce un precio válido.')
+      return
+    }
+    const optimisticProductId = createOptimisticId('optimistic-product')
+    const optimisticItemId = createOptimisticId('optimistic-item')
+    const optimisticProduct: ProductSummary = {
       id: optimisticProductId,
       title,
       current_price: price,
@@ -589,7 +596,7 @@ export default function ListDetailPage() {
       return
     }
 
-    const created = (Array.isArray(data) ? data[0] : data) as CreatedListProduct | undefined
+    const created = firstRpcRow<CreatedListProduct>(data)
     if (!created) {
       setItems((current) => current.filter((item) => item.id !== optimisticItemId))
       setProducts((current) => current.filter((product) => product.id !== optimisticProductId))
@@ -603,9 +610,9 @@ export default function ListDetailPage() {
       fetchListItemByProduct(listId, created.created_id),
     ])
 
-    const nextProduct: Product =
+    const nextProduct: ProductSummary =
       !productRes.error && productRes.data
-        ? (productRes.data as Product)
+        ? (productRes.data as ProductSummary)
         : {
             id: created.created_id,
             title: created.title,

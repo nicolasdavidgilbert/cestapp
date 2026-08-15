@@ -1,13 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from 'react'
+import type { NewProductDraft, ProductRecord } from '@/src/types/product'
 
-export type Product = {
-  id: string
-  title: string
-  description: string | null
-  current_price: number | null
-  created_at: string
-  updated_at: string
-}
+export type { NewProductDraft, ProductRecord } from '@/src/types/product'
 
 export type PriceHistory = {
   id: string
@@ -17,25 +11,14 @@ export type PriceHistory = {
   created_by: string | null
 }
 
-export type NewProductDraft = {
-  title: string
-  description: string
-  price: string
-}
-
-export type ProductsCacheEntry = {
-  savedAt: number
-  products: Product[]
-}
-
 export type ProductEditorForm = {
   title: string
   description: string
 }
 
 export type ProductCardProps = {
-  product: Product
-  onOpen: (product: Product) => void
+  product: ProductRecord
+  onOpen: (product: ProductRecord) => void
 }
 
 export type ProductCreateModalProps = {
@@ -49,7 +32,7 @@ export type ProductCreateModalProps = {
 
 export type ProductEditorModalProps = {
   open: boolean
-  product: Product | null
+  product: ProductRecord | null
   editorForm: ProductEditorForm
   setEditorForm: Dispatch<SetStateAction<ProductEditorForm>>
   savingProduct: boolean
@@ -68,13 +51,6 @@ export type ProductEditorModalProps = {
   onDeleteHistoryEntry: (entryId: string) => void
 }
 
-export type AuthErrorLike = {
-  status?: unknown
-  statusCode?: unknown
-  error?: unknown
-  message?: unknown
-}
-
 export type ProductHistoryEditMap = Record<string, string>
 
 export type LoadProductsOptions = {
@@ -83,10 +59,10 @@ export type LoadProductsOptions = {
 }
 
 export type ProductsDerivedStateInput = {
-  products: Product[]
+  products: ProductRecord[]
   search: string
 }
 
 export type ProductsDerivedState = {
-  filteredProducts: Product[]
+  filteredProducts: ProductRecord[]
 }

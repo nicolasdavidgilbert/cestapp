@@ -1,5 +1,6 @@
 import { getInsforgeClient } from '@/src/services/insforge'
 import type { DashboardList, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
+import { publishUserListsChanged } from '@/src/features/dashboard/services/realtimeService'
 
 export function fetchOwnLists(userId: string) {
   return getInsforgeClient().database
@@ -73,8 +74,5 @@ export function reconcileLists(previous: DashboardList[], incoming: DashboardLis
 }
 
 export function publishDashboardListEvent(userId: string, listId: string, action: string) {
-  return getInsforgeClient().realtime.publish('user:' + userId + ':lists', 'user_lists_changed', {
-    list_id: listId,
-    action,
-  })
+  return publishUserListsChanged(userId, listId, action)
 }

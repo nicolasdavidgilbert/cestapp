@@ -1,5 +1,6 @@
 import { getInsforgeClient } from '@/src/services/insforge'
 import type { InviteExpiryOption, InviteLink } from '@/src/features/dashboard/types'
+import { publishRealtimeEvent, publishUserListsChanged } from '@/src/features/dashboard/services/realtimeService'
 
 export const inviteExpiryOptions = [
   { value: 'never', label: 'Sin caducidad', days: null },
@@ -70,16 +71,11 @@ export function fetchVisibleListProducts(listId: string) {
 }
 
 export function publishListRealtimeEvent(listChannel: string, eventName: string, payload: Record<string, unknown>) {
-  return getInsforgeClient().realtime.publish(listChannel, eventName, payload)
+  return publishRealtimeEvent(listChannel, eventName, payload)
 }
 
 export function publishUserListsRealtimeEvent(targetUserId: string, listId: string, action: string, by?: string) {
-  return getInsforgeClient().realtime.publish('user:' + targetUserId + ':lists', 'user_lists_changed', {
-    list_id: listId,
-    action,
-    by,
-    timestamp: new Date().toISOString(),
-  })
+  return publishUserListsChanged(targetUserId, listId, action, by)
 }
 
 export function shareListWithEmail(listId: string, targetEmail: string) {

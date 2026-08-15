@@ -1,10 +1,9 @@
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
+import type { NewProductDraft, ProductSummary } from '@/src/types/product'
+import type { RealtimePayload } from '@/src/types/realtime'
 
-export type Product = {
-  id: string
-  title: string
-  current_price: number | null
-}
+export type { NewProductDraft, ProductSummary } from '@/src/types/product'
+export type { RealtimePayload } from '@/src/types/realtime'
 
 export type ListItem = {
   id: string
@@ -12,7 +11,7 @@ export type ListItem = {
   product_id: string
   quantity: number
   checked: boolean
-  product?: Product
+  product?: ProductSummary
 }
 
 export type ShoppingList = {
@@ -32,13 +31,6 @@ export type ShoppingListShare = {
 export type DashboardList = ShoppingList & {
   access: 'owner' | 'shared'
   role?: string
-}
-
-export type RealtimePayload = {
-  meta?: {
-    channel?: string
-    senderId?: string
-  }
 }
 
 export type RealtimeProduct = {
@@ -66,18 +58,6 @@ export type ListChangedRealtimePayload = RealtimePayload & {
   product_id?: string
   quantity?: number
   user_id?: string
-}
-
-export type ListsCacheEntry = {
-  savedAt: number
-  lists: DashboardList[]
-}
-
-export type AuthErrorLike = {
-  status?: unknown
-  statusCode?: unknown
-  error?: unknown
-  message?: unknown
 }
 
 export type InviteLink = {
@@ -118,16 +98,10 @@ export type ProfileFields = {
   avatar_url: string
 }
 
-export type NewProductDraft = {
-  title: string
-  description: string
-  price: string
-}
-
 export type AddProductModalProps = {
   open: boolean
-  products: Product[]
-  filteredProducts: Product[]
+  products: ProductSummary[]
+  filteredProducts: ProductSummary[]
   items: ListItem[]
   productSearch: string
   setProductSearch: (value: string) => void
@@ -216,7 +190,7 @@ export type DashboardListsRealtimeOptions = {
 
 export type ListDerivedStateInput = {
   items: ListItem[]
-  products: Product[]
+  products: ProductSummary[]
   productSearch: string
 }
 
@@ -227,8 +201,8 @@ export type ListDerivedState = {
   total: number
   remainingTotal: number
   progress: number
-  filteredProducts: Product[]
-  suggestedProducts: Product[]
+  filteredProducts: ProductSummary[]
+  suggestedProducts: ProductSummary[]
 }
 
 export type DashboardListsDerivedStateInput = {

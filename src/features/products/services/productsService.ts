@@ -1,5 +1,5 @@
 import { getInsforgeClient } from '@/src/services/insforge'
-import type { Product } from '@/src/features/products/types'
+import type { ProductRecord } from '@/src/types/product'
 
 export function fetchProductsByUser(userId: string) {
   return getInsforgeClient().database
@@ -61,7 +61,7 @@ export function deletePriceHistoryEntry(entryId: string) {
   return getInsforgeClient().database.from('price_history').delete().eq('id', entryId)
 }
 
-export function reconcileProducts(previous: Product[], incoming: Product[]) {
+export function reconcileProducts(previous: ProductRecord[], incoming: ProductRecord[]) {
   const previousById = new Map(previous.map((item) => [item.id, item]))
   const reconciled = incoming.map((nextItem) => {
     const prevItem = previousById.get(nextItem.id)

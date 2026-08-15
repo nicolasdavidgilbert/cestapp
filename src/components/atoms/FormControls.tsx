@@ -1,13 +1,10 @@
 import type { PrimaryButtonProps, TextInputProps } from '@/src/types/ui'
-
-function joinClasses(...classes: (string | undefined | false)[]) {
-  return classes.filter(Boolean).join(' ')
-}
+import { cn } from '@/src/utils/classNames'
 
 export function TextInput({ className, inputSize = 'normal', ...props }: TextInputProps) {
   return (
     <input
-      className={joinClasses(
+      className={cn(
         'w-full rounded-2xl border border-border bg-muted/40 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:border-secondary/40 focus:bg-muted/60 focus:ring-4 focus:ring-secondary/5',
         inputSize === 'compact' ? 'px-4 py-2' : 'px-6 py-4',
         className
@@ -25,7 +22,7 @@ export function PrimaryButton({ children, className, tone = 'secondary', ...prop
 
   return (
     <button
-      className={joinClasses(
+      className={cn(
         'group relative flex items-center justify-center overflow-hidden rounded-2xl px-6 py-4 text-base font-bold transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale disabled:hover:scale-100',
         toneClass,
         className

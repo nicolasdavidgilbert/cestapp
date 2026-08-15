@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useInsforgeRealtimeChannel } from '@/src/hooks/useInsforgeRealtimeChannel'
 import type { ListRealtimeProps } from '@/src/features/dashboard/types'
+import { getListChannel, isRemoteChannelPayload } from '@/src/features/dashboard/services/realtimeService'
 
 export function useListRealtime({
   listId,
@@ -12,27 +13,24 @@ export function useListRealtime({
   onMembersChanged,
   onInviteLinksChanged,
 }: ListRealtimeProps) {
-  const channel = listId && userId ? 'list:' + listId : undefined
+  const channel = listId && userId ? getListChannel(listId) : undefined
   const insforge = useInsforgeRealtimeChannel({ channel, logPrefix: '[ListRealtime]' })
 
   useEffect(() => {
     if (!channel) return
 
     const listUpdatesHandler = (payload: Parameters<typeof onListChanged>[0]) => {
-      const metaChannel = payload.meta?.channel?.replace(/^realtime:/, '')
-      if (metaChannel !== channel || payload.meta?.senderId === userId) return
+      if (!isRemoteChannelPayload(payload, channel, userId)) return
       onListChanged(payload)
     }
 
     const membersUpdatesHandler = (payload: Parameters<typeof onListChanged>[0]) => {
-      const metaChannel = payload.meta?.channel?.replace(/^realtime:/, '')
-      if (metaChannel !== channel || payload.meta?.senderId === userId) return
+      if (!isRemoteChannelPayload(payload, channel, userId)) return
       onMembersChanged()
     }
 
     const inviteLinksUpdatesHandler = (payload: Parameters<typeof onListChanged>[0]) => {
-      const metaChannel = payload.meta?.channel?.replace(/^realtime:/, '')
-      if (metaChannel !== channel || payload.meta?.senderId === userId) return
+      if (!isRemoteChannelPayload(payload, channel, userId)) return
       onInviteLinksChanged()
     }
 
