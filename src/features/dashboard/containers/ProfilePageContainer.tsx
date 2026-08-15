@@ -7,13 +7,14 @@ import { ProfileForm } from '@/src/features/dashboard/components/profile/Profile
 import { Toast } from '@/src/components/atoms/Toast'
 import { ProtectedPageLoader } from '@/src/components/atoms/AsyncPageState'
 import { useProtectedUser } from '@/src/hooks/useProtectedUser'
+import { useTimedValue } from '@/src/hooks/useTimedValue'
 
 export default function ProfilePage() {
   const router = useRouter()
   const { user, loading, signOut, updateProfile, themePreference, setThemePreference } = useProtectedUser()
   const [savingTheme, setSavingTheme] = useState(false)
   const [themeError, setThemeError] = useState('')
-  const [themeSuccess, setThemeSuccess] = useState('')
+  const { value: themeSuccess, show: showThemeSuccess, clear: clearThemeSuccess } = useTimedValue('', 1800)
 
   async function handleSignOut() {
     await signOut()
@@ -25,16 +26,13 @@ export default function ProfilePage() {
 
     setSavingTheme(true)
     setThemeError('')
-    setThemeSuccess('')
+    clearThemeSuccess()
 
     const result = await setThemePreference(nextTheme)
     if (result.error) {
       setThemeError(result.error)
     } else {
-      setThemeSuccess('Tema actualizado')
-      window.setTimeout(() => {
-        setThemeSuccess((current) => (current === 'Tema actualizado' ? '' : current))
-      }, 1800)
+      showThemeSuccess('Tema actualizado')
     }
 
     setSavingTheme(false)

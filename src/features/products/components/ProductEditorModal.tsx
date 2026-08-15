@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import { AppModal, ModalHeader } from '@/src/components/organisms/AppModal'
 import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
+import { ProductFields } from '@/src/features/products/components/ProductFields'
 import type { ProductEditorModalProps } from '@/src/features/products/types'
 
 export function ProductEditorModal({
@@ -48,26 +49,17 @@ export function ProductEditorModal({
       <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-8 sm:space-y-10">
         <form onSubmit={handleSubmit} className="space-y-6">
           <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Atributos Básicos</span>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground ml-1">Nombre</label>
-              <TextInput
-                type="text"
-                value={editorForm.title}
-                onChange={(event) => setEditorForm({ ...editorForm, title: event.target.value })}
-                placeholder="Nombre"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground ml-1">Descripción</label>
-              <TextInput
-                type="text"
-                value={editorForm.description}
-                onChange={(event) => setEditorForm({ ...editorForm, description: event.target.value })}
-                placeholder="Notas adicionales..."
-              />
-            </div>
-          </div>
+          <ProductFields
+            value={editorForm}
+            onChange={(field, value) => {
+              if (field !== 'price') setEditorForm((current) => ({ ...current, [field]: value }))
+            }}
+            showDescription
+            className="sm:grid-cols-2"
+            titlePlaceholder="Nombre"
+            descriptionPlaceholder="Notas adicionales..."
+            labelTone="muted"
+          />
           <PrimaryButton
             type="submit"
             disabled={savingProduct || !editorForm.title.trim()}

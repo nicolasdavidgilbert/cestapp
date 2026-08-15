@@ -12,6 +12,7 @@ import { CheckedListItemRow, PendingListItemRow } from '@/src/features/dashboard
 import { Toast } from '@/src/components/atoms/Toast'
 import { ProtectedPageLoader } from '@/src/components/atoms/AsyncPageState'
 import { useProtectedUser } from '@/src/hooks/useProtectedUser'
+import { useTimedValue } from '@/src/hooks/useTimedValue'
 import type { CreatedListProduct, DashboardTab, DashboardTabDefinition, InviteExpiryOption, InviteLink, ListChangedRealtimePayload, ListItem, RealtimeEventPayload, ShareByEmailResult, ShoppingList, ShoppingListShare } from '@/src/features/dashboard/types'
 import type { ProductSummary } from '@/src/types/product'
 import { getListChannel } from '@/src/features/dashboard/services/realtimeService'
@@ -41,26 +42,19 @@ export default function ListDetailPage() {
   const [sharingEmail, setSharingEmail] = useState(false)
   const [productSearch, setProductSearch] = useState('')
   const [quickProductPrice, setQuickProductPrice] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
+  const { value: successMessage, show: showSuccess } = useTimedValue('', 1800)
   const [inviteExpiry, setInviteExpiry] = useState<InviteExpiryOption>('7d')
   const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([])
   const [loadingInviteLinks, setLoadingInviteLinks] = useState(false)
   const [generatingInviteLink, setGeneratingInviteLink] = useState(false)
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null)
-  const [copiedLinkToken, setCopiedLinkToken] = useState<string | null>(null)
+  const { value: copiedLinkToken, show: showCopiedLink } = useTimedValue<string | null>(null, 1600)
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
   const [updatingItems, setUpdatingItems] = useState<Set<string>>(new Set())
   const [removingCheckedItems, setRemovingCheckedItems] = useState(false)
 
   const listChannel = getListChannel(listId)
   const canManageMembers = list?.owner_id === user?.id
-
-  const showSuccess = useCallback((message: string) => {
-    setSuccessMessage(message)
-    window.setTimeout(() => {
-      setSuccessMessage((current) => (current === message ? '' : current))
-    }, 1800)
-  }, [])
 
   const loadMembers = useCallback(async () => {
     const { data, error } = await fetchListShareMembers(listId)
@@ -384,11 +378,8 @@ export default function ListDetailPage() {
     const inviteUrl = buildInviteUrl(token)
     try {
       await navigator.clipboard.writeText(inviteUrl)
-      setCopiedLinkToken(token)
+      showCopiedLink(token)
       showSuccess('Enlace copiado')
-      window.setTimeout(() => {
-        setCopiedLinkToken((current) => (current === token ? null : current))
-      }, 1600)
     } catch {
       setError('No se pudo copiar el enlace.')
     }

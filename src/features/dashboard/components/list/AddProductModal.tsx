@@ -1,5 +1,6 @@
 import { AppModal, ModalHeader } from '@/src/components/organisms/AppModal'
 import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
+import { ProductFields } from '@/src/features/products/components/ProductFields'
 import type { AddProductModalProps } from '@/src/features/dashboard/types'
 
 export function AddProductModal({
@@ -127,21 +128,13 @@ export function AddProductModal({
         <div className="space-y-6 pt-4 border-t border-border">
           <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary">Nuevo Producto Rápido</span>
           <form onSubmit={onCreateAndAddProduct} className="grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextInput
-                type="text"
-                value={newProduct.title}
-                onChange={(event) => setNewProduct({ ...newProduct, title: event.target.value })}
-                placeholder="Nombre del producto *"
-                required
-              />
-              <TextInput
-                type="text"
-                value={newProduct.price}
-                onChange={(event) => setNewProduct({ ...newProduct, price: event.target.value })}
-                placeholder="Precio estimado (EUR)"
-              />
-            </div>
+            <ProductFields
+              value={newProduct}
+              onChange={(field, value) => setNewProduct((current) => ({ ...current, [field]: value }))}
+              showPrice
+              showLabels={false}
+              className="sm:grid-cols-2"
+            />
             <PrimaryButton
               type="submit"
               disabled={creatingProduct || !newProduct.title.trim()}

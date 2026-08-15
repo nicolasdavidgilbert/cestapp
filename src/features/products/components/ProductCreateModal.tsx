@@ -1,5 +1,6 @@
 import { AppModal, ModalHeader } from '@/src/components/organisms/AppModal'
-import { PrimaryButton, TextInput } from '@/src/components/atoms/FormControls'
+import { PrimaryButton } from '@/src/components/atoms/FormControls'
+import { ProductFields } from '@/src/features/products/components/ProductFields'
 import type { ProductCreateModalProps } from '@/src/features/products/types'
 
 export function ProductCreateModal({
@@ -30,39 +31,15 @@ export function ProductCreateModal({
       />
 
       <form onSubmit={onSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-secondary">Nombre del producto</label>
-          <TextInput
-            type="text"
-            value={newProduct.title}
-            onChange={(event) => setNewProduct({ ...newProduct, title: event.target.value })}
-            placeholder="Ej: Leche semidesnatada"
-            autoFocus
-            required
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-secondary">Descripción</label>
-          <TextInput
-            type="text"
-            value={newProduct.description}
-            onChange={(event) => setNewProduct({ ...newProduct, description: event.target.value })}
-            placeholder="Marca, tamaño o notas..."
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="ml-1 text-xs font-bold uppercase tracking-widest text-secondary">Precio inicial (EUR)</label>
-          <TextInput
-            type="number"
-            step="0.01"
-            min="0"
-            value={newProduct.price}
-            onChange={(event) => setNewProduct({ ...newProduct, price: event.target.value })}
-            placeholder="0.00"
-          />
-        </div>
+        <ProductFields
+          value={newProduct}
+          onChange={(field, value) => setNewProduct((current) => ({ ...current, [field]: value }))}
+          showDescription
+          showPrice
+          autoFocus
+          titlePlaceholder="Ej: Leche semidesnatada"
+          pricePlaceholder="0.00"
+        />
 
         <PrimaryButton type="submit" disabled={creating || !newProduct.title.trim()} className="mt-2 w-full">
           {creating ? 'Creando producto...' : 'Crear producto'}

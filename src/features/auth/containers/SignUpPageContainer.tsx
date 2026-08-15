@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useUser } from '@/src/store/UserContext'
 import { AuthLayout } from '@/src/features/auth/components/AuthLayout'
+import { AuthFeedback, AuthSubmitButton } from '@/src/features/auth/components/AuthFeedback'
+import { AuthFieldIcon } from '@/src/features/auth/components/AuthIcons'
 import { PremiumInput } from '@/src/features/auth/components/PremiumInput'
+import { ShoppingListPreview } from '@/src/features/auth/components/ShoppingListPreview'
 import { sanitizeRedirectPath } from '@/src/features/auth/services/redirectService'
 
 const onboardingHighlights = [
@@ -15,10 +18,10 @@ const onboardingHighlights = [
 ]
 
 const previewChecklist = [
-  { item: 'Leche', qty: '2 ud', done: true },
-  { item: 'Pan', qty: '1 ud', done: true },
-  { item: 'Tomate', qty: '4 ud', done: false },
-  { item: 'Pasta', qty: '2 paq', done: false },
+  { label: 'Leche', quantity: '2 ud', done: true },
+  { label: 'Pan', quantity: '1 ud', done: true },
+  { label: 'Tomate', quantity: '4 ud', done: false },
+  { label: 'Pasta', quantity: '2 paq', done: false },
 ]
 
 export default function SignUpPage() {
@@ -83,41 +86,7 @@ export default function SignUpPage() {
         </p>
       </div>
 
-      {/* Interactive Preview */}
-      <div className="bg-muted backdrop-blur-2xl border border-border shadow-2xl rounded-[2.5rem] p-6 animate-pulse">
-        <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-bold text-foreground uppercase tracking-widest">Lista Semanal</p>
-          <span className="rounded-full bg-muted/20 px-2 py-0.5 text-[10px] text-muted-foreground">4 items</span>
-        </div>
-        <ul className="space-y-3">
-          {previewChecklist.map((row) => (
-            <li
-              key={row.item}
-              className="flex items-center justify-between rounded-2xl border border-border bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/40"
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`flex h-5 w-5 items-center justify-center rounded-lg border text-[10px] font-bold transition-all ${
-                    row.done
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-muted/20 text-transparent'
-                  }`}
-                >
-                  ✓
-                </div>
-                <span
-                  className={`text-sm font-medium transition-all ${
-                    row.done ? 'text-muted-foreground line-through decoration-secondary/50' : 'text-foreground'
-                  }`}
-                >
-                  {row.item}
-                </span>
-              </div>
-              <span className="text-[11px] font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">{row.qty}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ShoppingListPreview items={previewChecklist} variant="compact" animated />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {onboardingHighlights.map((h) => (
@@ -143,17 +112,8 @@ export default function SignUpPage() {
       <div className="space-y-6">
         {/* Messages */}
         <div className="space-y-3">
-          {error && (
-            <div className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive font-medium animate-pulse">
-              {error}
-            </div>
-          )}
-
-          {successMessage && (
-            <div className="rounded-2xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-              {successMessage}
-            </div>
-          )}
+          <AuthFeedback message={error} animated />
+          <AuthFeedback message={successMessage} tone="success" />
         </div>
 
         {!showVerification ? (
@@ -166,11 +126,7 @@ export default function SignUpPage() {
               placeholder="Tu nombre"
               required
               autoComplete="name"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
-              }
+              icon={<AuthFieldIcon type="user" />}
             />
 
             <PremiumInput
@@ -181,11 +137,7 @@ export default function SignUpPage() {
               placeholder="nombre@ejemplo.com"
               required
               autoComplete="email"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                </svg>
-              }
+              icon={<AuthFieldIcon type="email" />}
             />
 
             <PremiumInput
@@ -196,21 +148,10 @@ export default function SignUpPage() {
               placeholder="••••••••"
               required
               autoComplete="new-password"
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-              }
+              icon={<AuthFieldIcon type="password" />}
             />
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative inline-flex w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary to-secondary/80 px-4 py-4 text-sm font-bold text-secondary-foreground shadow-lg transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
-              {loading ? 'Creando cuenta...' : 'Crear Cuenta'}
-            </button>
+            <AuthSubmitButton loading={loading} idleLabel="Crear Cuenta" loadingLabel="Creando cuenta..." />
           </form>
         ) : (
           <form onSubmit={handleVerify} className="space-y-6">
@@ -236,14 +177,13 @@ export default function SignUpPage() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || code.length !== 6}
-              className="group relative inline-flex w-full items-center justify-center overflow-hidden rounded-2xl bg-secondary px-4 py-4 text-sm font-bold text-secondary-foreground shadow-lg transition-all hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <span className="absolute inset-0 bg-foreground/10 opacity-0 transition-opacity group-hover:opacity-100" />
-              {loading ? 'Verificando...' : 'Verificar Cuenta'}
-            </button>
+            <AuthSubmitButton
+              loading={loading}
+              idleLabel="Verificar Cuenta"
+              loadingLabel="Verificando..."
+              disabled={code.length !== 6}
+              solid
+            />
             
             <button 
               type="button"

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MeshBackground } from '@/src/features/auth/components/MeshBackground'
+import { ShoppingListPreview } from '@/src/features/auth/components/ShoppingListPreview'
 import type { CapacitorWindow, IOSStandaloneNavigator } from '@/src/features/auth/types'
 
 const benefits = [
@@ -44,10 +45,10 @@ const workflowSteps = [
 ]
 
 const previewList = [
-  { name: 'Leche semidesnatada', qty: '2 ud', done: true },
-  { name: 'Huevos M (Docena)', qty: '1 ud', done: true },
-  { name: 'Pasta integral', qty: '3 paq', done: false },
-  { name: 'Tomate triturado', qty: '4 lat', done: false },
+  { label: 'Leche semidesnatada', quantity: '2 ud', done: true },
+  { label: 'Huevos M (Docena)', quantity: '1 ud', done: true },
+  { label: 'Pasta integral', quantity: '3 paq', done: false },
+  { label: 'Tomate triturado', quantity: '4 lat', done: false },
 ]
 
 export default function HomePage() {
@@ -152,39 +153,7 @@ export default function HomePage() {
           {/* Interactive Hero Preview */}
           <div className="relative">
             <div className="absolute inset-0 animate-pulse rounded-full bg-secondary/10 blur-[120px]" />
-            <div className="relative rounded-[2.5rem] border border-border bg-muted/20 p-6 shadow-2xl backdrop-blur-2xl [background:linear-gradient(135deg,rgba(var(--foreground-rgb),0.05),rgba(var(--foreground-rgb),0.02))]">
-              <div className="mb-6 flex items-center justify-between border-b border-border pb-4">
-                <div>
-                  <h3 className="text-sm font-bold uppercase tracking-widest text-foreground">Lista Semanal</h3>
-                  <p className="text-xs text-muted-foreground">Sincronizado hace un momento</p>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/20 text-secondary">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                </div>
-              </div>
-
-              <ul className="space-y-3">
-                {previewList.map((item) => (
-                  <li key={item.name} className="group flex items-center justify-between rounded-2xl border border-border bg-muted/20 px-4 py-3.5 transition-all hover:bg-muted/40">
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold transition-all ${
-                        item.done 
-                        ? 'border-secondary bg-secondary text-secondary-foreground' 
-                        : 'border-border bg-muted/20 text-transparent'
-                      }`}>
-                        ✓
-                      </div>
-                      <span className={`text-sm font-medium transition-all ${item.done ? 'text-muted-foreground line-through decoration-secondary/50' : 'text-foreground'}`}>
-                        {item.name}
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-bold text-secondary bg-secondary/10 px-2.5 py-1 rounded-full">{item.qty}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <ShoppingListPreview items={previewList} />
           </div>
         </section>
 
