@@ -1,11 +1,17 @@
 import 'server-only'
 
-import { createClient } from '@insforge/sdk'
+import {
+  clearAuthCookies as clearInsforgeAuthCookies,
+  createAuthActions as createInsforgeAuthActions,
+  createServerClient as createInsforgeServerClient,
+} from '@insforge/sdk/ssr'
 import { cookies } from 'next/headers'
-import type { AuthErrorLike, User } from '@/src/types/auth'
+import type { AuthErrorLike } from '@/src/types/auth'
+import {
+  INSFORGE_AUTH_COOKIE_SETTINGS,
+  INSFORGE_SSR_CONFIG,
+} from '@/src/services/insforgeConfig'
 
-const baseUrl = process.env.NEXT_PUBLIC_INSFORGE_URL!
-const anonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY!
 const isProduction = process.env.NODE_ENV === 'production'
 const cookiePrefix = isProduction ? '__Host-' : ''
 
@@ -37,13 +43,11 @@ function getConfiguredAppOrigin() {
 
 const configuredAppOrigin = getConfiguredAppOrigin()
 
-export const ACCESS_TOKEN_MAX_AGE_SECONDS = 60 * 15
-export const REFRESH_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 export const OAUTH_COOKIE_MAX_AGE_SECONDS = 60 * 10
 
 export const AUTH_COOKIE_NAMES = {
-  access: `${cookiePrefix}cestapp_access`,
-  refresh: `${cookiePrefix}cestapp_refresh`,
+  access: INSFORGE_AUTH_COOKIE_SETTINGS.names.accessToken,
+  refresh: INSFORGE_AUTH_COOKIE_SETTINGS.names.refreshToken,
   oauthVerifier: `${cookiePrefix}cestapp_oauth_verifier`,
   oauthRedirect: `${cookiePrefix}cestapp_oauth_redirect`,
 } as const
@@ -55,7 +59,7 @@ const legacyCookieNames = [
   'insforge_client_refresh_token',
 ]
 
-const authCookieOptions = {
+const oauthCookieOptions = {
   httpOnly: true,
   secure: isProduction,
   sameSite: 'lax' as const,
@@ -63,18 +67,17 @@ const authCookieOptions = {
   priority: 'high' as const,
 }
 
-export type ServerAuthSession = {
-  user: User
-  accessToken: string
+export function createServerClient(accessToken?: string) {
+  return createInsforgeServerClient({
+    ...INSFORGE_SSR_CONFIG,
+    ...(accessToken ? { accessToken } : {}),
+  })
 }
 
-export function createServerClient(accessToken?: string) {
-  return createClient({
-    baseUrl,
-    anonKey,
-    isServerMode: true,
-    autoRefreshToken: false,
-    edgeFunctionToken: accessToken,
+export async function createServerAuthActions() {
+  return createInsforgeAuthActions({
+    ...INSFORGE_SSR_CONFIG,
+    cookies: await cookies(),
   })
 }
 
@@ -86,26 +89,9 @@ export async function getAuthCookies() {
   }
 }
 
-export async function setAuthCookies(accessToken: string, refreshToken: string) {
-  const cookieStore = await cookies()
-  cookieStore.set(AUTH_COOKIE_NAMES.access, accessToken, {
-    ...authCookieOptions,
-    maxAge: ACCESS_TOKEN_MAX_AGE_SECONDS,
-  })
-  cookieStore.set(AUTH_COOKIE_NAMES.refresh, refreshToken, {
-    ...authCookieOptions,
-    maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
-  })
-
-  for (const name of legacyCookieNames) {
-    cookieStore.delete(name)
-  }
-}
-
 export async function clearAuthCookies() {
   const cookieStore = await cookies()
-  cookieStore.set(AUTH_COOKIE_NAMES.access, '', { ...authCookieOptions, maxAge: 0 })
-  cookieStore.set(AUTH_COOKIE_NAMES.refresh, '', { ...authCookieOptions, maxAge: 0 })
+  clearInsforgeAuthCookies(cookieStore, INSFORGE_AUTH_COOKIE_SETTINGS)
   for (const name of legacyCookieNames) {
     cookieStore.delete(name)
   }
@@ -114,11 +100,11 @@ export async function clearAuthCookies() {
 export async function setOAuthCookies(codeVerifier: string, redirectPath: string) {
   const cookieStore = await cookies()
   cookieStore.set(AUTH_COOKIE_NAMES.oauthVerifier, codeVerifier, {
-    ...authCookieOptions,
+    ...oauthCookieOptions,
     maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
   })
   cookieStore.set(AUTH_COOKIE_NAMES.oauthRedirect, redirectPath, {
-    ...authCookieOptions,
+    ...oauthCookieOptions,
     maxAge: OAUTH_COOKIE_MAX_AGE_SECONDS,
   })
 }
@@ -133,8 +119,8 @@ export async function getOAuthCookies() {
 
 export async function clearOAuthCookies() {
   const cookieStore = await cookies()
-  cookieStore.set(AUTH_COOKIE_NAMES.oauthVerifier, '', { ...authCookieOptions, maxAge: 0 })
-  cookieStore.set(AUTH_COOKIE_NAMES.oauthRedirect, '', { ...authCookieOptions, maxAge: 0 })
+  cookieStore.set(AUTH_COOKIE_NAMES.oauthVerifier, '', { ...oauthCookieOptions, maxAge: 0 })
+  cookieStore.set(AUTH_COOKIE_NAMES.oauthRedirect, '', { ...oauthCookieOptions, maxAge: 0 })
 }
 
 export function getRequestOrigin() {
@@ -186,16 +172,4 @@ export function isInvalidSessionError(error: unknown) {
     message.includes('session invalid') ||
     (message.includes('refresh token') && message.includes('invalid'))
   )
-}
-
-export function toServerAuthSession(data: unknown): ServerAuthSession | null {
-  if (!data || typeof data !== 'object') return null
-
-  const candidate = data as { user?: unknown; accessToken?: unknown }
-  if (!candidate.user || typeof candidate.accessToken !== 'string') return null
-
-  return {
-    user: candidate.user as User,
-    accessToken: candidate.accessToken,
-  }
 }

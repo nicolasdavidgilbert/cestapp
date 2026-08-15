@@ -9,12 +9,12 @@ import { getInsforgeClient } from '@/src/services/insforge'
 import { AuthLayout } from '@/src/features/auth/components/AuthLayout'
 import { PremiumInput } from '@/src/features/auth/components/PremiumInput'
 import type { SignInQueryState } from '@/src/features/auth/types'
-import { exchangeOAuthWeb, startOAuthWeb } from '@/src/features/auth/services/webAuthService'
+import { startOAuthWeb } from '@/src/features/auth/services/webAuthService'
 import { OAUTH_CODE_VERIFIER_KEY, OAUTH_REDIRECT_PATH_KEY, canUseWebOAuth, closeOAuthBrowser, getNativeOAuthRedirectUrl, isExpectedNativeOAuthCallback, isNativeCapacitorApp, openOAuthUrlInNativeBrowser, sanitizeRedirectPath } from '@/src/features/auth/services/oauthService'
 
 export default function SignInPage() {
   const router = useRouter()
-  const { signIn, completeNativeOAuth, refreshUser } = useUser()
+  const { signIn, completeNativeOAuth } = useUser()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -36,7 +36,7 @@ export default function SignInPage() {
       setQueryState({
         authStatus: params.get('insforge_status'),
         authType: params.get('insforge_type'),
-        authError: params.get('insforge_error'),
+        authError: params.get('insforge_error')?.slice(0, 300) ?? null,
         sessionExpired: params.get('session_expired') === '1',
         redirectPath: nextRedirectPath,
       })
@@ -135,37 +135,6 @@ export default function SignInPage() {
     }
   }, [handleNativeOAuthCallback])
 
-  useEffect(() => {
-    if (isNativeCapacitorApp()) return
-
-    const params = new URLSearchParams(window.location.search)
-    const oauthCode = params.get('insforge_code') ?? params.get('code')
-    if (!oauthCode || processingOAuthRef.current) return
-
-    let cancelled = false
-    processingOAuthRef.current = true
-
-    queueMicrotask(async () => {
-      setLoading(true)
-      const result = await exchangeOAuthWeb(oauthCode)
-      if (cancelled) return
-
-      if (!result.data) {
-        setError(result.error ?? 'No se pudo completar Google OAuth. Inténtalo de nuevo.')
-        setLoading(false)
-        processingOAuthRef.current = false
-        return
-      }
-
-      await refreshUser()
-      if (!cancelled) router.replace(sanitizeRedirectPath(result.data.redirect))
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [refreshUser, router])
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -204,8 +173,7 @@ export default function SignInPage() {
     }
 
     sessionStorage.setItem(OAUTH_REDIRECT_PATH_KEY, redirectPath)
-    const { data, error } = await getInsforgeClient().auth.signInWithOAuth({
-      provider,
+    const { data, error } = await getInsforgeClient().auth.signInWithOAuth(provider, {
       redirectTo: getNativeOAuthRedirectUrl(),
       skipBrowserRedirect: true,
     })
@@ -259,7 +227,7 @@ export default function SignInPage() {
             </div>
           )}
 
-          {authStatus === 'error' && authType === 'verify_email' && authError && (
+          {authStatus === 'error' && ['verify_email', 'oauth'].includes(authType ?? '') && authError && (
             <div className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive font-medium">
               {authError}
             </div>

@@ -32,7 +32,7 @@ Cesta++ resuelve 3 cosas:
 ## Stack tecnico
 - Next.js `16.3.0` (App Router)
 - React `19.2.4`
-- `@insforge/sdk` para auth, database y realtime
+- `@insforge/sdk` `1.5.2` para auth, database y realtime
 - Tailwind CSS `4`
 
 ## Datos y modelos (DB)
@@ -69,6 +69,15 @@ AUTH_RATE_LIMIT_SECRET=<secreto-aleatorio-de-al-menos-32-caracteres>
 `NEXT_PUBLIC_APP_URL` fija el origen utilizado en redirects y comprobaciones de autenticación. Debe ser un origen HTTPS sin ruta, consulta ni fragmento; por ejemplo, `https://cestapp.insforge.site` en producción o `https://saturno.taile4db48.ts.net:8443` en el backend de pruebas. La aplicación ignora `Host` y `X-Forwarded-*` para estas decisiones. `NEXT_PUBLIC_SITE_URL` se conserva únicamente como alias de compatibilidad.
 
 En `pnpm dev` se permite también un origen HTTP de loopback (`localhost`, `127.0.0.1` o `[::1]`); los builds de producción exigen HTTPS.
+
+## Modelo de sesion
+
+- Web y PWA usan la integración SSR oficial de InsForge. El SDK escribe un access token de corta duración y un refresh token `HttpOnly` en cookies del origen de Cesta++.
+- La comprobación y renovación web pasa por `/api/auth/refresh`; el refresh token no se devuelve al JavaScript de la página.
+- Google OAuth usa PKCE y completa el canje en el servidor mediante `/api/auth/oauth/callback`, sin tokens en la URL.
+- Android mantiene el refresh token cifrado con Android Keystore y no depende de las cookies del WebView.
+
+Con `@insforge/sdk` `1.5.2`, no uses directamente `auth.getCurrentUser()` para hidratar la sesión del `createBrowserClient`: esa función heredada intenta renovar contra el dominio de InsForge. En esta aplicación la hidratación utiliza la ruta SSR local; el cliente de navegador queda para Database y Realtime.
 
 ## Puesta en marcha (local)
 1. Instalar dependencias:
@@ -136,5 +145,6 @@ Esto permite que cambios de un usuario se reflejen en otros clientes conectados.
 
 ## Notas operativas
 - `redirectTo` en auth debe ser URL absoluta.
+- El callback web exacto debe estar en `allowedRedirectUrls` de InsForge. En pruebas es `https://saturno.taile4db48.ts.net:8443/api/auth/oauth/callback`.
 - La auditoria actualmente no borra historico automaticamente (retencion desactivada).
 - Si falta una particion mensual de auditoria, existe particion `default` como fallback.

@@ -1,8 +1,7 @@
 import {
   clearAuthCookies,
   clearOAuthCookies,
-  createServerClient,
-  getAuthCookies,
+  createServerAuthActions,
   isTrustedAuthRequest,
 } from '@/src/services/auth'
 import { readAuthJsonBody } from '@/src/services/authSecurity'
@@ -17,11 +16,8 @@ export async function POST(request: Request) {
     return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
   }
 
-  const { accessToken } = await getAuthCookies()
-  if (accessToken) {
-    const client = createServerClient(accessToken)
-    await client.auth.signOut()
-  }
+  const auth = await createServerAuthActions()
+  await auth.signOut()
 
   await Promise.all([clearAuthCookies(), clearOAuthCookies()])
   return Response.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } })

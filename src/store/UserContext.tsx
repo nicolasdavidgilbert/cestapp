@@ -35,6 +35,7 @@ import {
   signInWeb,
   signOutWeb,
   signUpWeb,
+  updateProfileWeb,
   verifyEmailWeb,
   type WebAuthSession,
 } from '@/src/features/auth/services/webAuthService'
@@ -87,7 +88,7 @@ export function UserProvider({ children }: UserProviderProps) {
   }, [])
 
   const applyWebSession = useCallback((session: WebAuthSession) => {
-    replaceInsforgeClient(session.accessToken)
+    replaceInsforgeClient()
     setUser(normalizeUser(session.user))
     setSessionUnavailable(false)
   }, [normalizeUser])
@@ -200,7 +201,7 @@ export function UserProvider({ children }: UserProviderProps) {
 
   const refreshWebSession = useCallback(async (): Promise<RefreshResult> => {
     const result = await refreshSessionWeb()
-    if (result.data) {
+    if (result.data?.user) {
       applyWebSession(result.data)
       return { ok: true }
     }
@@ -431,9 +432,26 @@ export function UserProvider({ children }: UserProviderProps) {
     await checkUser()
   }
 
+  const persistProfile = useCallback(async (profile: Record<string, unknown>) => {
+    if (isNativeCapacitorApp()) {
+      const { error } = await getInsforgeClient().auth.setProfile(profile)
+      return error?.message
+    }
+
+    const session = await refreshSession()
+    if (!session.ok) {
+      return session.reason === 'auth'
+        ? 'Tu sesión ha caducado. Inicia sesión de nuevo.'
+        : 'No se pudo comprobar la sesión. Inténtalo de nuevo.'
+    }
+
+    const result = await updateProfileWeb(profile)
+    return result.data ? undefined : result.error
+  }, [refreshSession])
+
   async function updateProfile(profile: Record<string, unknown>) {
-    const { error } = await getInsforgeClient().auth.setProfile(profile)
-    if (error) return { error: error.message }
+    const error = await persistProfile(profile)
+    if (error) return { error }
     await checkUser()
     return {}
   }
@@ -449,12 +467,12 @@ export function UserProvider({ children }: UserProviderProps) {
 
     const currentProfile = (user.profile ?? {}) as Record<string, unknown>
     const payload: Record<string, unknown> = { ...currentProfile, theme: nextTheme }
-    const { error } = await getInsforgeClient().auth.setProfile(payload)
+    const error = await persistProfile(payload)
 
     if (error) {
       applyThemePreference(previousTheme)
       window.localStorage.setItem(THEME_PREFERENCE_STORAGE_KEY, previousTheme)
-      return { error: error.message }
+      return { error }
     }
 
     setUser((current) => {
@@ -465,7 +483,7 @@ export function UserProvider({ children }: UserProviderProps) {
 
     await checkUser()
     return {}
-  }, [checkUser, user])
+  }, [checkUser, persistProfile, user])
 
   async function signOut() {
     if (isNativeCapacitorApp()) {

@@ -1,6 +1,6 @@
 import { sanitizeRedirectPath } from '@/src/features/auth/services/redirectService'
 import {
-  createServerClient,
+  createServerAuthActions,
   getErrorMessage,
   getErrorStatus,
   getRequestOrigin,
@@ -38,10 +38,9 @@ export async function POST(request: Request) {
     const ipLimit = await consumeIpRateLimit(request, AUTH_RATE_LIMITS.oauthStartIp)
     if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
 
-    const client = createServerClient()
-    const { data, error } = await client.auth.signInWithOAuth({
-      provider,
-      redirectTo: new URL('/sign-in', getRequestOrigin()).toString(),
+    const auth = await createServerAuthActions()
+    const { data, error } = await auth.signInWithOAuth(provider, {
+      redirectTo: new URL('/api/auth/oauth/callback', getRequestOrigin()).toString(),
       skipBrowserRedirect: true,
     })
 

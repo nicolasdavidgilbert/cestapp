@@ -2,7 +2,6 @@ import type { User } from '@/src/types/auth'
 
 export type WebAuthSession = {
   user: User
-  accessToken: string
 }
 
 type WebAuthResponse<T> = {
@@ -11,10 +10,14 @@ type WebAuthResponse<T> = {
   status: number
 }
 
-async function postAuth<T>(path: string, body?: Record<string, unknown>): Promise<WebAuthResponse<T>> {
+async function requestAuth<T>(
+  path: string,
+  body?: Record<string, unknown>,
+  method: 'POST' | 'PATCH' = 'POST',
+): Promise<WebAuthResponse<T>> {
   try {
     const response = await fetch(path, {
-      method: 'POST',
+      method,
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
@@ -41,11 +44,11 @@ async function postAuth<T>(path: string, body?: Record<string, unknown>): Promis
 }
 
 export function signInWeb(email: string, password: string) {
-  return postAuth<WebAuthSession>('/api/auth/sign-in', { email, password })
+  return requestAuth<WebAuthSession>('/api/auth/sign-in', { email, password })
 }
 
 export function signUpWeb(email: string, password: string, name: string) {
-  return postAuth<WebAuthSession & { requireVerification?: boolean }>('/api/auth/sign-up', {
+  return requestAuth<WebAuthSession & { requireVerification?: boolean }>('/api/auth/sign-up', {
     email,
     password,
     name,
@@ -53,21 +56,25 @@ export function signUpWeb(email: string, password: string, name: string) {
 }
 
 export function verifyEmailWeb(email: string, code: string) {
-  return postAuth<WebAuthSession>('/api/auth/verify-email', { email, code })
+  return requestAuth<WebAuthSession>('/api/auth/verify-email', { email, code })
 }
 
 export function refreshSessionWeb() {
-  return postAuth<WebAuthSession>('/api/auth/refresh')
+  return requestAuth<WebAuthSession>('/api/auth/refresh')
 }
 
 export function signOutWeb() {
-  return postAuth<{ success: boolean }>('/api/auth/sign-out')
+  return requestAuth<{ success: boolean }>('/api/auth/sign-out')
 }
 
 export function startOAuthWeb(provider: string, redirect: string) {
-  return postAuth<{ url: string }>('/api/auth/oauth/start', { provider, redirect })
+  return requestAuth<{ url: string }>('/api/auth/oauth/start', { provider, redirect })
 }
 
-export function exchangeOAuthWeb(code: string) {
-  return postAuth<WebAuthSession & { redirect: string }>('/api/auth/oauth/exchange', { code })
+export function updateProfileWeb(profile: Record<string, unknown>) {
+  return requestAuth<{ profile: Record<string, unknown> }>(
+    '/api/auth/profile',
+    { profile },
+    'PATCH',
+  )
 }

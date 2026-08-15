@@ -1,11 +1,10 @@
 import {
-  createServerClient,
+  clearAuthCookies,
+  createServerAuthActions,
   getErrorMessage,
   getErrorStatus,
   getRequestOrigin,
   isTrustedAuthRequest,
-  setAuthCookies,
-  toServerAuthSession,
 } from '@/src/services/auth'
 import {
   AUTH_RATE_LIMITS,
@@ -46,8 +45,8 @@ export async function POST(request: Request) {
     if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
     if (!identityLimit.allowed) return authRateLimitResponse(identityLimit)
 
-    const client = createServerClient()
-    const { data, error } = await client.auth.signUp({
+    const auth = await createServerAuthActions()
+    const { data, error } = await auth.signUp({
       email,
       password,
       name,
@@ -66,13 +65,15 @@ export async function POST(request: Request) {
       return Response.json({ requireVerification: true })
     }
 
-    const session = toServerAuthSession(data)
-    if (!session || !data?.refreshToken) {
+    if (!data?.user) {
+      await clearAuthCookies()
       return Response.json({ error: 'InsForge no devolvió una sesión renovable.' }, { status: 502 })
     }
 
-    await setAuthCookies(session.accessToken, data.refreshToken)
-    return Response.json(session, { headers: { 'Cache-Control': 'no-store' } })
+    return Response.json(
+      { user: data.user },
+      { headers: { 'Cache-Control': 'no-store' } },
+    )
   } catch {
     return Response.json({ error: 'La solicitud de registro no es válida.' }, { status: 400 })
   }

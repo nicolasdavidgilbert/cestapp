@@ -393,6 +393,32 @@ Las URLs permitidas actualmente en InsForge limitan el impacto, pero el código 
 
 **Pendiente de producción:** configurar `NEXT_PUBLIC_APP_URL=https://cestapp.insforge.site` en el despliegue, confirmar que `/sign-in` continúa en `allowedRedirectUrls` y repetir login, registro y OAuth. Cada preview o dominio alternativo necesita su propio build/origen explícito; no se aceptan hosts dinámicos por diseño.
 
+### SEC-12: gestión de sesión web duplicada fuera del soporte SSR de InsForge
+
+**Severidad:** media por riesgo de deriva y pérdida de disponibilidad; no se confirmó exposición del refresh token web
+**Estado:** ✅ resuelto y verificado con Google OAuth en `security-hardening`; pendiente de desplegar en producción
+
+La aplicación implementaba manualmente la persistencia, renovación y limpieza de la sesión web sobre las primitivas de InsForge. Los tokens seguían siendo emitidos y validados por InsForge y el refresh token ya se guardaba en una cookie `HttpOnly`: no existía una segunda sesión firmada por Cesta++ ni se demostró una filtración directa del refresh token. El riesgo real era mantener dos capas responsables del mismo protocolo, con posibilidad de que duración, rotación, forma de la respuesta y modo de cliente divergieran del SDK.
+
+Durante la migración a `@insforge/sdk/ssr`, Google completaba el canje PKCE y mostraba brevemente el dashboard, pero terminaba en `/sign-in?redirect=%2Fdashboard&session_expired=1`. Los logs demostraron que `auth.getCurrentUser()` del cliente SSR `1.5.2` ejecutaba su renovación heredada directamente contra el dominio de InsForge. Ese dominio no recibe la cookie `HttpOnly` de Cesta++, por lo que respondió `No refresh token provided` (`401`) y el frontend eliminó la sesión recién emitida.
+
+**Resolución aplicada (13 de agosto de 2026):**
+
+- Se actualizó `@insforge/sdk` de `1.2.4` a `1.5.2` y se sustituyó la gestión manual web por `createServerClient`, `createBrowserClient`, `createAuthActions` y `refreshAuth` de `@insforge/sdk/ssr`.
+- Login, registro, verificación, logout y canje OAuth persisten o limpian las cookies mediante las acciones oficiales. Las respuestas de esos formularios ya no devuelven access ni refresh tokens.
+- Google OAuth termina en `GET /api/auth/oauth/callback`: el servidor conserva el verificador PKCE en una cookie `HttpOnly`, canjea el código una sola vez y redirige únicamente a una ruta interna saneada.
+- La hidratación web evita la ruta defectuosa `auth.getCurrentUser()` de esta versión y llama a `/api/auth/refresh`. Esta ruta valida el origen, aplica rate limiting, usa `refreshAuth` y rota los tokens con el flujo servidor/móvil oficial.
+- El cliente SSR del navegador se mantiene para Database y Realtime. La cookie de refresh es `HttpOnly`, `SameSite=Lax`, de ámbito `/`, `Secure` y con prefijo `__Host-` en producción. El access token es legible por el cliente porque esas consultas se realizan directamente desde el frontend.
+- La modificación del perfil web pasa por `/api/auth/profile`, después de renovar la sesión por la ruta SSR local.
+- Android conserva su flujo separado con Android Keystore; esta migración no devuelve el refresh token al WebView.
+- Se añadió `https://saturno.taile4db48.ts.net:8443/api/auth/oauth/callback` a `allowedRedirectUrls` sin retirar los destinos existentes.
+
+**Riesgo residual:** un XSS en el origen puede leer el access token de corta duración y actuar con los permisos del usuario hasta que caduque. `HttpOnly` impide extraer directamente el refresh token, pero no impide acciones desde una página ya comprometida. CSP, control de dependencias y RLS siguen siendo imprescindibles. La sesión oficial de InsForge tampoco elimina el bypass del rate limiting local descrito en SEC-06.
+
+**Verificación realizada:** el flujo real de Google por `https://saturno.taile4db48.ts.net:8443` completó el canje con `200`, renovó inmediatamente con `POST /refresh 200`, conectó Realtime como `authenticated` y cargó listas, participaciones y productos. Una segunda hidratación volvió a renovar con `200` y recuperó los datos sin `session_expired`. TypeScript, ESLint sin errores, `git diff --check` y `pnpm build` finalizaron correctamente; el build contiene 24 rutas. Persiste solo el aviso previo de lint en `ProfileForm.tsx`.
+
+**Pendiente de producción:** desplegar las rutas nuevas, registrar `https://cestapp.insforge.site/api/auth/oauth/callback` si todavía no está permitido y repetir login, recarga, renovación posterior, varias pestañas y logout en el dominio público.
+
 ## Observaciones adicionales de Android
 
 - `FileProvider` no está exportado, lo cual es positivo, pero `external-path path="."` concede un ámbito excesivamente amplio si alguna función entrega permisos URI en el futuro.
@@ -434,7 +460,7 @@ Este total necesita interpretación:
 - Los avisos asociados a Next, PostCSS, Nanoid y Babel se corrigieron en SEC-05.
 - Clerk y sus dependencias transitivas no utilizadas se eliminaron en SEC-07.
 - Varias incidencias de `tar`, `xmldom` y `brace-expansion` proceden de `@capacitor/cli`; afectan principalmente al proceso de compilación, no al APK ejecutándose. `@capacitor/cli` debería actualizarse y residir en `devDependencies`.
-- `ws` y `socket.io-parser` llegan mediante `@insforge/sdk`; conviene actualizar el SDK cuando publique una cadena corregida.
+- `ws` y `socket.io-parser` siguen llegando mediante `@insforge/sdk` `1.5.2`; su cadena transitiva necesita una publicación corregida.
 
 ## Estado del despliegue
 
@@ -458,12 +484,14 @@ El endurecimiento OAuth de SEC-10 requiere tanto desplegar el frontend como publ
 
 El origen fijo de SEC-11 está configurado únicamente para `saturno` en `.env.local`. Producción necesita definir su propio `NEXT_PUBLIC_APP_URL` antes del build.
 
+La sesión SSR y el callback de SEC-12 también son cambios locales. Producción debe registrar su callback exacto en InsForge y desplegar el frontend antes de usar el flujo nuevo.
+
 Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque puede haber cambiado después de la fecha de este documento.
 
 ## Aspectos positivos observados
 
-- Las cookies web nuevas usan `HttpOnly`, `Secure` en producción, `SameSite=Lax` y prefijo `__Host-`.
-- El refresh token web no se expone directamente a JavaScript.
+- La cookie web de refresh usa `HttpOnly`, `Secure` en producción, `SameSite=Lax` y prefijo `__Host-`.
+- El refresh token web no se expone directamente a JavaScript ni en las respuestas de autenticación.
 - Las rutas web comprueban el encabezado `Origin` antes de modificar la sesión.
 - El redireccionamiento posterior al login está limitado a rutas internas conocidas.
 - OAuth web utiliza PKCE y guarda el verificador en una cookie `HttpOnly`.
@@ -486,7 +514,7 @@ Este estado debe comprobarse nuevamente antes de corregir o desplegar, porque pu
 
 - [x] Actualizar Next.js y `eslint-config-next` a una versión corregida compatible. Resuelto con `16.3.0` y verificado en web y Android.
 - [x] Eliminar `@clerk/nextjs`. Resuelto y verificado en web y Android; pendiente de desplegar.
-- [ ] Actualizar InsForge SDK y Capacitor.
+- [x] Actualizar InsForge SDK. Resuelto con `1.5.2`; Capacitor queda pendiente por separado.
 - [x] Ejecutar nuevamente `pnpm audit --prod` y revisar los avisos restantes. Quedan 17 asociados a `@capacitor/cli` y `@insforge/sdk`.
 - [x] Añadir rate limiting y validación de cuerpos a `/api/auth/*`. Resuelto y verificado en web y Android contra `security-hardening`; pendiente de desplegar.
 - [ ] Confirmar y configurar rate limiting en `POST /api/auth/sessions` de InsForge, o protegerlo mediante un control soportado por el proveedor. Se confirmó que la vía directa omite el límite local de cinco intentos.
@@ -526,12 +554,13 @@ Una corrección de seguridad no debe considerarse terminada hasta demostrar como
 10. ✅ Lint, build de Next.js y build del APK siguen completándose correctamente tras SEC-05, SEC-06, SEC-07, SEC-08 y SEC-10.
 11. ⚠️ El APK solo declara el callback OAuth esperado y el navegador nativo rechaza URLs ajenas; falta probar el flujo completo en dispositivo y migrar a un App Link verificado.
 12. ✅ Las cabeceras `Host` y `X-Forwarded-*` falsificadas no alteran el origen de auth; un `Origin` atacante continúa recibiendo `403`.
+13. ✅ Google OAuth conserva la sesión mediante la ruta SSR local, renueva con `200`, conecta Realtime y sobrevive una segunda hidratación sin `session_expired`.
 
 ## Limitaciones de esta auditoría
 
 - No se intentó explotar ninguna cuenta ni acceder a información de otros usuarios.
 - No se realizaron pruebas de penetración destructivas o de carga contra producción.
-- No se auditó el código interno del servicio gestionado de InsForge.
+- No se auditó el despliegue interno del servicio gestionado de InsForge. Para SEC-12 se contrastaron su documentación y repositorio público oficial con el comportamiento observado.
 - El asesor automático de seguridad de InsForge no pudo consultarse porque el CLI solicitó renovar su sesión; las consultas SQL de metadatos y políticas sí funcionaron.
 - No se realizó análisis dinámico del APK en un dispositivo rooteado ni interceptación TLS.
 - Una auditoría adicional debe repetir las comprobaciones después de aplicar las correcciones y antes de publicar.
