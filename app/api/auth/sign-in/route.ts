@@ -3,7 +3,6 @@ import {
   createServerAuthActions,
   getErrorMessage,
   getErrorStatus,
-  isTrustedAuthRequest,
 } from '@/src/services/auth'
 import {
   AUTH_RATE_LIMITS,
@@ -11,28 +10,20 @@ import {
   checkIdentityRateLimit,
   clearIdentityFailures,
   consumeIpRateLimit,
-  readAuthJsonBody,
   recordIdentityFailure,
 } from '@/src/services/authSecurity'
+import { parseSignInInput } from '@/src/services/authInput'
+import { runPasswordSignIn } from '@/src/services/authProviderFlows'
+import { readTrustedWebAuthJson } from '@/src/services/authRequest'
+import { authJson } from '@/src/services/authResponse'
 
 export async function POST(request: Request) {
-  if (!isTrustedAuthRequest(request)) {
-    return Response.json({ error: 'Origen de solicitud no permitido.' }, { status: 403 })
-  }
-
   try {
-    const bodyResult = await readAuthJsonBody(request)
-    if (!bodyResult.ok) {
-      return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
-    }
-
-    const body = bodyResult.body
-    const email = typeof body.email === 'string' ? body.email.trim() : ''
-    const password = typeof body.password === 'string' ? body.password : ''
-
-    if (!email || email.length > 320 || !password || password.length > 1024) {
-      return Response.json({ error: 'Correo y contraseña no son válidos.' }, { status: 400 })
-    }
+    const prepared = await readTrustedWebAuthJson(request)
+    if (!prepared.ok) return prepared.response
+    const input = parseSignInInput(prepared.body)
+    if (!input.ok) return authJson({ error: input.error }, 400)
+    const { email, password } = input.value
 
     const [ipLimit, identityLimit] = await Promise.all([
       consumeIpRateLimit(request, AUTH_RATE_LIMITS.signInIp),
@@ -42,7 +33,7 @@ export async function POST(request: Request) {
     if (!identityLimit.allowed) return authRateLimitResponse(identityLimit)
 
     const auth = await createServerAuthActions()
-    const { data, error } = await auth.signInWithPassword({ email, password })
+    const { data, error } = await runPasswordSignIn(auth, email, password)
 
     if (error) {
       const status = getErrorStatus(error)
@@ -51,13 +42,13 @@ export async function POST(request: Request) {
         if (!failureLimit.allowed) return authRateLimitResponse(failureLimit)
       }
 
-      return Response.json(
+      return authJson(
         {
           error: status >= 400 && status < 500
             ? 'No se pudo iniciar sesión. Revisa las credenciales o verifica tu correo.'
             : getErrorMessage(error, 'No se pudo iniciar sesión.'),
         },
-        { status: status >= 400 && status < 500 ? 401 : 502 },
+        status >= 400 && status < 500 ? 401 : 502,
       )
     }
 
@@ -65,14 +56,11 @@ export async function POST(request: Request) {
 
     if (!data?.user) {
       await clearAuthCookies()
-      return Response.json({ error: 'InsForge no devolvió una sesión renovable.' }, { status: 502 })
+      return authJson({ error: 'InsForge no devolvió una sesión renovable.' }, 502)
     }
 
-    return Response.json(
-      { user: data.user },
-      { headers: { 'Cache-Control': 'no-store' } },
-    )
+    return authJson({ user: data.user })
   } catch {
-    return Response.json({ error: 'La solicitud de inicio de sesión no es válida.' }, { status: 400 })
+    return authJson({ error: 'La solicitud de inicio de sesión no es válida.' }, 400)
   }
 }

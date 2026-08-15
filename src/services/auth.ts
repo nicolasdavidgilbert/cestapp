@@ -6,7 +6,11 @@ import {
   createServerClient as createInsforgeServerClient,
 } from '@insforge/sdk/ssr'
 import { cookies } from 'next/headers'
-import type { AuthErrorLike } from '@/src/types/auth'
+import {
+  getAuthErrorMessage,
+  getAuthErrorStatus,
+  isInvalidAuthSessionError,
+} from '@/src/utils/authErrors'
 import {
   INSFORGE_AUTH_COOKIE_SETTINGS,
   INSFORGE_SSR_CONFIG,
@@ -139,37 +143,13 @@ export function isTrustedAuthRequest(request: Request) {
 }
 
 export function getErrorStatus(error: unknown) {
-  const details = (error ?? {}) as AuthErrorLike
-  return typeof details.statusCode === 'number'
-    ? details.statusCode
-    : typeof details.status === 'number'
-      ? details.status
-      : 500
+  return getAuthErrorStatus(error)
 }
 
 export function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error
-    ? error.message
-    : typeof (error as AuthErrorLike | null)?.message === 'string'
-      ? (error as AuthErrorLike).message!
-      : fallback
+  return getAuthErrorMessage(error, fallback)
 }
 
 export function isInvalidSessionError(error: unknown) {
-  const details = (error ?? {}) as AuthErrorLike
-  const status = getErrorStatus(error)
-  const code = typeof details.error === 'string' ? details.error.toLowerCase() : ''
-  const message = (details.message ?? '').toLowerCase()
-
-  return (
-    status === 401 ||
-    status === 403 ||
-    code.includes('invalid_token') ||
-    code.includes('token_expired') ||
-    code.includes('refresh_token') ||
-    message.includes('invalid token') ||
-    message.includes('token expired') ||
-    message.includes('session invalid') ||
-    (message.includes('refresh token') && message.includes('invalid'))
-  )
+  return isInvalidAuthSessionError(error)
 }

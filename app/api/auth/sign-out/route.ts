@@ -2,23 +2,17 @@ import {
   clearAuthCookies,
   clearOAuthCookies,
   createServerAuthActions,
-  isTrustedAuthRequest,
 } from '@/src/services/auth'
-import { readAuthJsonBody } from '@/src/services/authSecurity'
+import { readTrustedWebAuthJson } from '@/src/services/authRequest'
+import { authJson } from '@/src/services/authResponse'
 
 export async function POST(request: Request) {
-  if (!isTrustedAuthRequest(request)) {
-    return Response.json({ error: 'Origen de solicitud no permitido.' }, { status: 403 })
-  }
-
-  const bodyResult = await readAuthJsonBody(request)
-  if (!bodyResult.ok) {
-    return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
-  }
+  const prepared = await readTrustedWebAuthJson(request)
+  if (!prepared.ok) return prepared.response
 
   const auth = await createServerAuthActions()
   await auth.signOut()
 
   await Promise.all([clearAuthCookies(), clearOAuthCookies()])
-  return Response.json({ success: true }, { headers: { 'Cache-Control': 'no-store' } })
+  return authJson({ success: true })
 }

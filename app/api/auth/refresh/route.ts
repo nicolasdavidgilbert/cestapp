@@ -1,6 +1,7 @@
 import { refreshAuth } from '@insforge/sdk/ssr'
 import { isTrustedAuthRequest } from '@/src/services/auth'
 import { INSFORGE_SSR_CONFIG } from '@/src/services/insforgeConfig'
+import { authJson } from '@/src/services/authResponse'
 import {
   AUTH_RATE_LIMITS,
   authRateLimitResponse,
@@ -9,7 +10,7 @@ import {
 
 export async function POST(request: Request) {
   if (!isTrustedAuthRequest(request)) {
-    return Response.json({ error: 'Origen de solicitud no permitido.' }, { status: 403 })
+    return authJson({ error: 'Origen de solicitud no permitido.' }, 403)
   }
 
   const ipLimit = await consumeIpRateLimit(request, AUTH_RATE_LIMITS.refreshIp)

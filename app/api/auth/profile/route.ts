@@ -3,28 +3,22 @@ import {
   getAuthCookies,
   getErrorMessage,
   getErrorStatus,
-  isTrustedAuthRequest,
 } from '@/src/services/auth'
-import { readAuthJsonBody } from '@/src/services/authSecurity'
+import { readTrustedWebAuthJson } from '@/src/services/authRequest'
+import { authJson } from '@/src/services/authResponse'
 
 export async function PATCH(request: Request) {
-  if (!isTrustedAuthRequest(request)) {
-    return Response.json({ error: 'Origen de solicitud no permitido.' }, { status: 403 })
-  }
+  const prepared = await readTrustedWebAuthJson(request)
+  if (!prepared.ok) return prepared.response
 
-  const bodyResult = await readAuthJsonBody(request)
-  if (!bodyResult.ok) {
-    return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
-  }
-
-  const profile = bodyResult.body.profile
+  const profile = prepared.body.profile
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
-    return Response.json({ error: 'El perfil no es válido.' }, { status: 400 })
+    return authJson({ error: 'El perfil no es válido.' }, 400)
   }
 
   const { accessToken } = await getAuthCookies()
   if (!accessToken) {
-    return Response.json({ error: 'No hay una sesión activa.' }, { status: 401 })
+    return authJson({ error: 'No hay una sesión activa.' }, 401)
   }
 
   const { data, error } = await createServerClient(accessToken).auth.setProfile(
@@ -33,11 +27,11 @@ export async function PATCH(request: Request) {
 
   if (error) {
     const status = getErrorStatus(error)
-    return Response.json(
+    return authJson(
       { error: getErrorMessage(error, 'No se pudo actualizar el perfil.') },
-      { status: status >= 400 && status < 500 ? status : 502 },
+      status >= 400 && status < 500 ? status : 502,
     )
   }
 
-  return Response.json(data, { headers: { 'Cache-Control': 'no-store' } })
+  return authJson(data)
 }

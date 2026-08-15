@@ -37,13 +37,6 @@ export type RefreshResult =
   | { ok: true }
   | { ok: false; reason: 'auth' | 'transient' }
 
-export type ErrorLike = {
-  statusCode?: unknown
-  error?: unknown
-  code?: unknown
-  message?: unknown
-}
-
 export type AuthErrorLike = {
   status?: number
   statusCode?: number

@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { User } from '@/src/types/auth'
 import { getErrorMessage, getErrorStatus } from '@/src/services/auth'
+import { authJson } from '@/src/services/authResponse'
 
 const NATIVE_AUTH_HEADER = 'x-cestapp-native'
 const NATIVE_AUTH_HEADER_VALUE = 'android-v1'
@@ -48,20 +49,7 @@ export function toNativeAuthSession(data: unknown): NativeAuthSession | null {
 }
 
 export function nativeJson(data: unknown, status = 200) {
-  return Response.json(data, {
-    status,
-    headers: {
-      'Cache-Control': 'no-store, private',
-      Pragma: 'no-cache',
-      'X-Content-Type-Options': 'nosniff',
-    },
-  })
-}
-
-export function rejectNonNativeRequest(request: Request) {
-  return isNativeAuthRequest(request)
-    ? null
-    : nativeJson({ error: 'Cliente nativo no permitido.' }, 403)
+  return authJson(data, status)
 }
 
 export function nativeProviderError(error: unknown, fallback: string) {

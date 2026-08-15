@@ -1,7 +1,6 @@
 import { createServerClient, getErrorStatus } from '@/src/services/auth'
 import {
   nativeJson,
-  rejectNonNativeRequest,
   toNativeAuthSession,
 } from '@/src/services/nativeAuth'
 import {
@@ -10,24 +9,18 @@ import {
   checkIdentityRateLimit,
   clearIdentityFailures,
   consumeIpRateLimit,
-  readAuthJsonBody,
   recordIdentityFailure,
 } from '@/src/services/authSecurity'
+import { parseSignInInput } from '@/src/services/authInput'
+import { runPasswordSignIn } from '@/src/services/authProviderFlows'
+import { readTrustedNativeAuthJson } from '@/src/services/authRequest'
 
 export async function POST(request: Request) {
-  const rejection = rejectNonNativeRequest(request)
-  if (rejection) return rejection
-
-  const bodyResult = await readAuthJsonBody(request)
-  if (!bodyResult.ok) return nativeJson({ error: bodyResult.error }, bodyResult.status)
-
-  const body = bodyResult.body
-  const email = typeof body?.email === 'string' ? body.email.trim() : ''
-  const password = typeof body?.password === 'string' ? body.password : ''
-
-  if (!email || email.length > 320 || !password || password.length > 1024) {
-    return nativeJson({ error: 'Correo y contraseña no son válidos.' }, 400)
-  }
+  const prepared = await readTrustedNativeAuthJson(request)
+  if (!prepared.ok) return prepared.response
+  const input = parseSignInInput(prepared.body)
+  if (!input.ok) return nativeJson({ error: input.error }, 400)
+  const { email, password } = input.value
 
   const [ipLimit, identityLimit] = await Promise.all([
     consumeIpRateLimit(request, AUTH_RATE_LIMITS.signInIp),
@@ -36,7 +29,7 @@ export async function POST(request: Request) {
   if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
   if (!identityLimit.allowed) return authRateLimitResponse(identityLimit)
 
-  const { data, error } = await createServerClient().auth.signInWithPassword({ email, password })
+  const { data, error } = await runPasswordSignIn(createServerClient().auth, email, password)
   if (error) {
     const status = getErrorStatus(error)
     if (status >= 400 && status < 500) {

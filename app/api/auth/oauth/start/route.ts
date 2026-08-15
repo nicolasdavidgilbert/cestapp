@@ -4,35 +4,29 @@ import {
   getErrorMessage,
   getErrorStatus,
   getRequestOrigin,
-  isTrustedAuthRequest,
   setOAuthCookies,
 } from '@/src/services/auth'
 import {
   AUTH_RATE_LIMITS,
   authRateLimitResponse,
   consumeIpRateLimit,
-  readAuthJsonBody,
 } from '@/src/services/authSecurity'
+import { readTrustedWebAuthJson } from '@/src/services/authRequest'
+import { authJson } from '@/src/services/authResponse'
 
 const supportedProviders = new Set(['google', 'github'])
 
 export async function POST(request: Request) {
-  if (!isTrustedAuthRequest(request)) {
-    return Response.json({ error: 'Origen de solicitud no permitido.' }, { status: 403 })
-  }
-
   try {
-    const bodyResult = await readAuthJsonBody(request)
-    if (!bodyResult.ok) {
-      return Response.json({ error: bodyResult.error }, { status: bodyResult.status })
-    }
+    const prepared = await readTrustedWebAuthJson(request)
+    if (!prepared.ok) return prepared.response
 
-    const body = bodyResult.body
+    const body = prepared.body
     const provider = typeof body.provider === 'string' ? body.provider : ''
     const redirectPath = sanitizeRedirectPath(typeof body.redirect === 'string' ? body.redirect : null)
 
     if (!supportedProviders.has(provider)) {
-      return Response.json({ error: 'Proveedor OAuth no permitido.' }, { status: 400 })
+      return authJson({ error: 'Proveedor OAuth no permitido.' }, 400)
     }
 
     const ipLimit = await consumeIpRateLimit(request, AUTH_RATE_LIMITS.oauthStartIp)
@@ -46,19 +40,19 @@ export async function POST(request: Request) {
 
     if (error) {
       const status = getErrorStatus(error)
-      return Response.json(
+      return authJson(
         { error: getErrorMessage(error, 'No se pudo iniciar OAuth.') },
-        { status: status >= 400 && status < 500 ? status : 502 },
+        status >= 400 && status < 500 ? status : 502,
       )
     }
 
     if (!data?.url || !data.codeVerifier) {
-      return Response.json({ error: 'InsForge no devolvió un desafío OAuth válido.' }, { status: 502 })
+      return authJson({ error: 'InsForge no devolvió un desafío OAuth válido.' }, 502)
     }
 
     await setOAuthCookies(data.codeVerifier, redirectPath)
-    return Response.json({ url: data.url }, { headers: { 'Cache-Control': 'no-store' } })
+    return authJson({ url: data.url })
   } catch {
-    return Response.json({ error: 'La solicitud OAuth no es válida.' }, { status: 400 })
+    return authJson({ error: 'La solicitud OAuth no es válida.' }, 400)
   }
 }

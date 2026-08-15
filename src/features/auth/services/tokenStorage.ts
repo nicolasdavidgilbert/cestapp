@@ -1,5 +1,5 @@
-import type { ErrorLike } from '@/src/types/auth'
 import { sanitizeRedirectPath } from '@/src/features/auth/services/redirectService'
+import { isInvalidAuthSessionError } from '@/src/utils/authErrors'
 
 export const ACCESS_TOKEN_COOKIE = 'insforge_client_access_token'
 export const REFRESH_TOKEN_COOKIE = 'insforge_client_refresh_token'
@@ -64,24 +64,5 @@ export function redirectToLogin() {
 }
 
 export function isAuthSessionError(error: unknown) {
-  const details = (error ?? {}) as ErrorLike
-  const statusCode = typeof details.statusCode === 'number' ? details.statusCode : null
-  const errorCode = typeof details.error === 'string' ? details.error.toUpperCase() : ''
-  const nativeCode = typeof details.code === 'string' ? details.code.toUpperCase() : ''
-  const errorMessage = (() => {
-    if (typeof details.message === 'string') return details.message.toLowerCase()
-    if (error instanceof Error && typeof error.message === 'string') return error.message.toLowerCase()
-    return ''
-  })()
-
-  if (statusCode === 401 || statusCode === 403) return true
-  if (nativeCode === 'NO_SESSION' || nativeCode === 'INVALID_SESSION') return true
-  if (nativeCode === 'HTTP_401' || nativeCode === 'HTTP_403') return true
-  if (errorCode === 'INVALID_TOKEN' || errorCode === 'UNAUTHORIZED' || errorCode === 'TOKEN_EXPIRED') return true
-  if (errorMessage.includes('sesión no válida') || errorMessage.includes('session invalid')) return true
-  if (errorMessage.includes('unauthorized') || errorMessage.includes('invalid token')) return true
-  if (errorMessage.includes('refresh token') && errorMessage.includes('invalid')) return true
-  if (errorMessage.includes('token expired')) return true
-
-  return false
+  return isInvalidAuthSessionError(error)
 }

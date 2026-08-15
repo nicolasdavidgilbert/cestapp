@@ -2,7 +2,6 @@ import { createServerClient } from '@/src/services/auth'
 import {
   nativeJson,
   nativeProviderError,
-  rejectNonNativeRequest,
   toNativeAuthSession,
 } from '@/src/services/nativeAuth'
 import {
@@ -10,28 +9,17 @@ import {
   authRateLimitResponse,
   consumeIdentityRateLimit,
   consumeIpRateLimit,
-  readAuthJsonBody,
 } from '@/src/services/authSecurity'
+import { parseSignUpInput } from '@/src/services/authInput'
+import { runPasswordSignUp } from '@/src/services/authProviderFlows'
+import { readTrustedNativeAuthJson } from '@/src/services/authRequest'
 
 export async function POST(request: Request) {
-  const rejection = rejectNonNativeRequest(request)
-  if (rejection) return rejection
-
-  const bodyResult = await readAuthJsonBody(request)
-  if (!bodyResult.ok) return nativeJson({ error: bodyResult.error }, bodyResult.status)
-
-  const body = bodyResult.body
-  const email = typeof body?.email === 'string' ? body.email.trim() : ''
-  const password = typeof body?.password === 'string' ? body.password : ''
-  const name = typeof body?.name === 'string' ? body.name.trim() : ''
-
-  if (
-    !email || email.length > 320 ||
-    !password || password.length > 1024 ||
-    !name || name.length > 120
-  ) {
-    return nativeJson({ error: 'Nombre, correo y contraseña no son válidos.' }, 400)
-  }
+  const prepared = await readTrustedNativeAuthJson(request)
+  if (!prepared.ok) return prepared.response
+  const input = parseSignUpInput(prepared.body)
+  if (!input.ok) return nativeJson({ error: input.error }, 400)
+  const { email, password, name } = input.value
 
   const [ipLimit, identityLimit] = await Promise.all([
     consumeIpRateLimit(request, AUTH_RATE_LIMITS.signUpIp),
@@ -40,7 +28,7 @@ export async function POST(request: Request) {
   if (!ipLimit.allowed) return authRateLimitResponse(ipLimit)
   if (!identityLimit.allowed) return authRateLimitResponse(identityLimit)
 
-  const { data, error } = await createServerClient().auth.signUp({
+  const { data, error } = await runPasswordSignUp(createServerClient().auth, {
     email,
     password,
     name,
